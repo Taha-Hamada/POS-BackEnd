@@ -3,6 +3,9 @@ import { Router } from 'express';
 import env from '../config/env.js';
 import authRoutes from '../features/auth/auth.routes.js';
 import branchRoutes from '../features/branches/branch.routes.js';
+import categoryRoutes from '../features/categories/category.routes.js';
+import inventoryRoutes from '../features/inventory/inventory.routes.js';
+import productRoutes from '../features/products/product.routes.js';
 import userRoutes from '../features/users/user.routes.js';
 
 const router = Router();
@@ -28,5 +31,8 @@ router.get('/health', (_req, res) => {
 router.use('/auth', authRoutes);
 router.use('/users', userRoutes);
 router.use('/branches', branchRoutes);
+router.use('/categories', categoryRoutes);
+router.use('/products', productRoutes);
+router.use('/inventory', inventoryRoutes);
 
 export default router;
