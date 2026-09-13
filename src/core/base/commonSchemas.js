@@ -26,6 +26,15 @@ export const dateRangeQuery = z.object({
   to: z.coerce.date().optional(),
 });
 
+/**
+ * التجميع (aggregate) مبيحوّلش النصوص لـ ObjectId زي الاستعلام العادي،
+ * فأي مطابقة داخل pipeline لازم تعدي من هنا الأول وإلا هترجع فاضية من غير خطأ.
+ */
+export const toObjectId = (value) =>
+  value instanceof mongoose.Types.ObjectId
+    ? value
+    : new mongoose.Types.ObjectId(String(value));
+
 /** بيحوّل نص بحث لتعبير نمطي آمن — من غير الهروب ده أي قوس بيكسر الاستعلام. */
 export const toSearchRegex = (search) =>
   new RegExp(search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
