@@ -26,7 +26,7 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().default('*'),
 
   RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().positive().default(15),
-  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(3000),
 
   DEFAULT_TAX_RATE: z.coerce.number().min(0).max(1).default(0.14),
   DEFAULT_CURRENCY: z.string().default('EGP'),
