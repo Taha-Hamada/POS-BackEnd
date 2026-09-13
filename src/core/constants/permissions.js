@@ -82,7 +82,8 @@ export const ROLE_PERMISSIONS = Object.freeze({
     P.CATEGORY_VIEW,
     P.CUSTOMER_VIEW, P.CUSTOMER_MANAGE,
     P.INVOICE_VIEW, P.INVOICE_CREATE,
-    P.RETURN_VIEW,
+    // المرتجع بيتعمل على الدرج، فالكاشير لازم يقدر ينفذه عشان رد الكاش يتسجل صح.
+    P.RETURN_VIEW, P.RETURN_MANAGE,
     P.INVENTORY_VIEW,
     P.SHIFT_VIEW, P.SHIFT_MANAGE,
     P.PROMOTION_VIEW,

@@ -8,6 +8,8 @@ import customerRoutes from '../features/customers/customer.routes.js';
 import inventoryRoutes from '../features/inventory/inventory.routes.js';
 import invoiceRoutes from '../features/invoices/invoice.routes.js';
 import productRoutes from '../features/products/product.routes.js';
+import returnRoutes from '../features/returns/return.routes.js';
+import shiftRoutes from '../features/shifts/shift.routes.js';
 import settingsRoutes from '../features/settings/settings.routes.js';
 import supplierRoutes from '../features/suppliers/supplier.routes.js';
 import userRoutes from '../features/users/user.routes.js';
@@ -41,6 +43,8 @@ router.use('/inventory', inventoryRoutes);
 router.use('/customers', customerRoutes);
 router.use('/suppliers', supplierRoutes);
 router.use('/invoices', invoiceRoutes);
+router.use('/returns', returnRoutes);
+router.use('/shifts', shiftRoutes);
 router.use('/settings', settingsRoutes);
 
 export default router;

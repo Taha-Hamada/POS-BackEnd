@@ -5,6 +5,8 @@ import {
   sendSuccess,
 } from '../../core/http/apiResponse.js';
 import asyncHandler from '../../core/http/asyncHandler.js';
+import { getSettings } from '../settings/settings.service.js';
+import * as shiftService from '../shifts/shift.service.js';
 
 import * as invoiceService from './invoice.service.js';
 
@@ -15,11 +17,27 @@ const requireBranch = (req) => {
   return branch;
 };
 
+/**
+ * الوردية بتتاخد من الوردية المفتوحة للكاشير، مش من الطلب.
+ * لو الإعدادات بتفرض وردية، البيع بيتوقف لحد ما يفتحها.
+ */
+const resolveShift = async (req) => {
+  const settings = await getSettings();
+
+  if (settings.requireOpenShift) {
+    const shift = await shiftService.requireOpenShift(req.user.id);
+    return shift._id;
+  }
+
+  return shiftService.getShiftIdFor(req.user.id);
+};
+
 export const create = asyncHandler(async (req, res) => {
   const invoice = await invoiceService.createInvoice({
     ...req.body,
     branch: requireBranch(req),
     cashier: req.user.id,
+    shift: await resolveShift(req),
   });
 
   sendCreated(res, { message: `اتعملت الفاتورة ${invoice.number}`, data: invoice });
@@ -30,6 +48,7 @@ export const hold = asyncHandler(async (req, res) => {
     ...req.body,
     branch: requireBranch(req),
     cashier: req.user.id,
+    shift: await resolveShift(req),
   });
 
   sendCreated(res, { message: 'اتعلقت الفاتورة', data: invoice });
