@@ -355,9 +355,15 @@ export const getDashboard = async ({ branch, days = 7 }) => {
   const today = startOfToday();
   const periodFrom = daysAgo(days - 1);
 
+  // الفترة اللي قبلها بنفس الطول، عشان الشاشة تعرض نسبة التغيّر.
+  const previousFrom = daysAgo(days * 2 - 1);
+  const previousTo = new Date(periodFrom.getTime() - 1);
+
   const [
     todayStats,
     periodStats,
+    previousStats,
+    paymentMethods,
     returns,
     expenses,
     series,
@@ -370,6 +376,8 @@ export const getDashboard = async ({ branch, days = 7 }) => {
   ] = await Promise.all([
     invoiceService.getBranchSummary({ branch, from: today }),
     invoiceService.getBranchSummary({ branch, from: periodFrom }),
+    invoiceService.getBranchSummary({ branch, from: previousFrom, to: previousTo }),
+    invoiceService.getPaymentBreakdown({ branch, from: periodFrom }),
     returnService.getReturnsSummary({ branch, from: periodFrom }),
     expenseService.summarizeByCategory({ branch, from: periodFrom, status: 'approved' }),
     getSalesSeries({ branch, days }),
@@ -403,6 +411,18 @@ export const getDashboard = async ({ branch, days = 7 }) => {
           ? round2(periodStats.total / periodStats.invoicesCount)
           : 0,
     },
+    /// نفس أرقام الفترة السابقة، والشاشة بتحسب منها نسبة التغيّر.
+    previous: {
+      sales: previousStats.total,
+      invoices: previousStats.invoicesCount,
+      profit: previousStats.profit,
+      averageTicket:
+        previousStats.invoicesCount > 0
+          ? round2(previousStats.total / previousStats.invoicesCount)
+          : 0,
+    },
+    /// المحصّل بكل طريقة دفع خلال الفترة.
+    paymentMethods,
     series,
     topProducts,
     lowStock,
