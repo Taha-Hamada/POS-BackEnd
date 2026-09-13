@@ -7,6 +7,7 @@ import {
 import { nextSequence } from '../../core/db/counter.model.js';
 import ApiError from '../../core/errors/ApiError.js';
 import { round2 } from '../../core/utils/money.js';
+import * as expenseService from '../expenses/expense.service.js';
 import * as invoiceService from '../invoices/invoice.service.js';
 import * as returnService from '../returns/return.service.js';
 
@@ -54,19 +55,26 @@ export const openShift = async ({ cashier, branch, openingBalance }) => {
 export const calculateShiftTotals = async (shift) => {
   const filters = { shift: shift._id ?? shift.id };
 
-  const [summary, byMethod, returns] = await Promise.all([
+  const [summary, byMethod, returns, cashExpenses] = await Promise.all([
     invoiceService.getBranchSummary(filters),
     invoiceService.getPaymentBreakdown(filters),
     returnService.summarizeByShift(filters.shift),
+    expenseService.cashExpensesForShift(filters.shift),
   ]);
 
   const cashSales = byMethod[PAYMENT_METHODS.CASH]?.amount ?? 0;
   const cashIn = sumMovements(shift.cashMovements, 'in');
   const cashOut = sumMovements(shift.cashMovements, 'out');
 
-  // الكاش المتوقع في الدرج: الافتتاحي + مبيعات الكاش + الإيداعات − السحوبات − المرتجعات الكاش.
+  // الكاش المتوقع في الدرج:
+  // الافتتاحي + مبيعات الكاش + الإيداعات − السحوبات − المرتجعات الكاش − المصروفات الكاش.
   const expectedCash = round2(
-    shift.openingBalance + cashSales + cashIn - cashOut - returns.cashRefunds,
+    shift.openingBalance +
+      cashSales +
+      cashIn -
+      cashOut -
+      returns.cashRefunds -
+      cashExpenses,
   );
 
   return {
@@ -77,6 +85,7 @@ export const calculateShiftTotals = async (shift) => {
     discountTotal: summary.discountTotal,
     returnsTotal: returns.total,
     cashRefunds: returns.cashRefunds,
+    cashExpenses,
     byMethod,
     cashSales,
     cashIn,
