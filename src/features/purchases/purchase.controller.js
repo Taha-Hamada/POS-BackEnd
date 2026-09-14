@@ -59,9 +59,17 @@ export const list = asyncHandler(async (req, res) => {
   sendPaginated(res, { items, pagination });
 });
 
+export const summary = asyncHandler(async (req, res) => {
+  const data = await purchaseService.summarizeOrders({
+    ...req.query,
+    branch: req.query.branch ?? req.user.branch ?? undefined,
+  });
+  sendSuccess(res, { data });
+});
+
 export const getOne = asyncHandler(async (req, res) => {
   const order = await purchaseService.getOrderById(req.params.id);
   sendSuccess(res, { data: order });
 });
 
-export default { create, update, confirm, cancel, receive, list, getOne };
+export default { create, update, confirm, cancel, receive, list, summary, getOne };

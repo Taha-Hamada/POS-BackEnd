@@ -14,6 +14,7 @@ import {
   getOrderSchema,
   listOrdersSchema,
   receiveOrderSchema,
+  summarySchema,
   updateOrderSchema,
 } from './purchase.validation.js';
 
@@ -23,6 +24,8 @@ router.use(authenticate);
 
 const canView = requirePermissions(PERMISSIONS.PURCHASE_VIEW);
 const canManage = requirePermissions(PERMISSIONS.PURCHASE_MANAGE);
+
+router.get('/summary', canView, validate(summarySchema), controller.summary);
 
 router.get('/', canView, validate(listOrdersSchema), controller.list);
 router.get('/:id', canView, validate(getOrderSchema), controller.getOne);

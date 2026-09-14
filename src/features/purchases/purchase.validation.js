@@ -73,6 +73,13 @@ export const listOrdersSchema = {
   }),
 };
 
+export const summarySchema = {
+  query: z.object({
+    branch: objectId.optional(),
+    supplier: objectId.optional(),
+  }),
+};
+
 export const getOrderSchema = { params: idParam };
 
 export default {
@@ -81,5 +88,6 @@ export default {
   receiveOrderSchema,
   cancelOrderSchema,
   listOrdersSchema,
+  summarySchema,
   getOrderSchema,
 };

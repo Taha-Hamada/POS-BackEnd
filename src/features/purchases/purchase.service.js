@@ -1,5 +1,5 @@
 import BaseRepository from '../../core/base/BaseRepository.js';
-import { toSearchRegex } from '../../core/base/commonSchemas.js';
+import { toObjectId, toSearchRegex } from '../../core/base/commonSchemas.js';
 import {
   PURCHASE_ORDER_STATUSES,
   STOCK_MOVEMENT_REASONS,
@@ -297,14 +297,87 @@ const buildFilter = ({ supplier, branch, status, from, to, search }) => {
   return filter;
 };
 
-export const listOrders = ({ page, limit, sort, ...filters }) =>
-  orderRepository.paginate(buildFilter(filters), {
+/**
+ * قايمة الأوامر من غير سطورها، ومعاها إجمالي الكميات ونسبة الاستلام.
+ *
+ * الـvirtuals اللي على الموديل بتحسب الإجماليات دي من السطور، لكن الاستعلام
+ * بيرجع lean فالـvirtuals مش بتيجي معاه. فبنقرا الكميات بس ونحسبها هنا،
+ * وبنشيل السطور من الرد عشان الجدول مايجرّش تفاصيل مش محتاجها.
+ */
+export const listOrders = async ({ page, limit, sort, ...filters }) => {
+  const result = await orderRepository.paginate(buildFilter(filters), {
     page,
     limit,
     sort: sort ?? '-orderDate',
     populate: POPULATE,
-    select: '-lines',
+    select: '-lines.name -lines.sku -lines.unitCost -lines.lineTotal',
   });
+
+  result.items = result.items.map(({ lines = [], ...order }) => {
+    const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
+    const receivedQuantity = lines.reduce(
+      (sum, line) => sum + line.receivedQuantity,
+      0,
+    );
+
+    return {
+      ...order,
+      totalQuantity,
+      receivedQuantity,
+      receivedRatio: totalQuantity === 0 ? 0 : receivedQuantity / totalQuantity,
+      linesCount: lines.length,
+    };
+  });
+
+  return result;
+};
+
+/**
+ * عدد وقيمة الأوامر في كل حالة.
+ *
+ * البطاقات فوق الجدول لازم تعدّ كل الأوامر مش الصفحة المعروضة، والجمع على
+ * السيرفر أرخص من جر كل الأوامر عشان نعدّها في الواجهة.
+ */
+export const summarizeOrders = async ({ branch, supplier } = {}) => {
+  const match = {};
+  if (branch) match.branch = toObjectId(branch);
+  if (supplier) match.supplier = toObjectId(supplier);
+
+  const rows = await orderRepository.aggregate([
+    { $match: match },
+    {
+      $group: {
+        _id: '$status',
+        count: { $sum: 1 },
+        total: { $sum: '$total' },
+      },
+    },
+  ]);
+
+  const byStatus = Object.fromEntries(
+    Object.values(STATUS).map((status) => [status, { count: 0, total: 0 }]),
+  );
+
+  for (const row of rows) {
+    byStatus[row._id] = { count: row.count, total: round2(row.total) };
+  }
+
+  // «بانتظار الاستلام» = المؤكد والمستلم جزئيًا، وهي اللي البطاقات بتبرزها.
+  const awaiting = [STATUS.CONFIRMED, STATUS.PARTIALLY_RECEIVED].reduce(
+    (sum, status) => ({
+      count: sum.count + byStatus[status].count,
+      total: round2(sum.total + byStatus[status].total),
+    }),
+    { count: 0, total: 0 },
+  );
+
+  return {
+    byStatus,
+    awaiting,
+    count: rows.reduce((sum, row) => sum + row.count, 0),
+    total: round2(rows.reduce((sum, row) => sum + row.total, 0)),
+  };
+};
 
 export const getOrderById = async (id) => {
   const order = await orderRepository.findById(id, { populate: POPULATE });
@@ -319,5 +392,6 @@ export default {
   cancelOrder,
   receiveOrder,
   listOrders,
+  summarizeOrders,
   getOrderById,
 };
