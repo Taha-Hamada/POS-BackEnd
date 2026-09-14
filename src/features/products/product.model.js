@@ -25,6 +25,7 @@ const productSchema = new mongoose.Schema(
     },
     brand: { type: String, trim: true, default: '' },
     unit: { type: String, trim: true, default: 'قطعة' },
+    description: { type: String, trim: true, default: '', maxlength: 500 },
 
     price: { type: Number, required: true, min: 0 },
     cost: { type: Number, required: true, min: 0 },

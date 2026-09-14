@@ -22,6 +22,7 @@ const productBody = z.object({
   category: objectId,
   brand: z.string().trim().max(80).optional(),
   unit: z.string().trim().max(20).optional(),
+  description: z.string().trim().max(500).optional(),
   price: z.number().min(0, 'السعر مينفعش يكون سالب'),
   cost: z.number().min(0, 'التكلفة مينفعش تكون سالبة'),
   minStock: z.number().int().min(0).optional(),
