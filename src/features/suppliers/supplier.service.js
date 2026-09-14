@@ -1,6 +1,10 @@
-import { toSearchRegex } from '../../core/base/commonSchemas.js';
+import { toObjectId, toSearchRegex } from '../../core/base/commonSchemas.js';
+import { PURCHASE_ORDER_STATUSES } from '../../core/constants/index.js';
 import ApiError from '../../core/errors/ApiError.js';
 import { round2 } from '../../core/utils/money.js';
+// الموديل مباشرة مش الخدمة: خدمة المشتريات بتستورد الملف ده، فاستيرادها هنا
+// كان هيعمل حلقة استيراد.
+import PurchaseOrder from '../purchases/purchaseOrder.model.js';
 
 import supplierRepository from './supplier.repository.js';
 
@@ -109,6 +113,104 @@ export const payDue = async ({ supplier: supplierId, amount }) => {
 
 export const getPayablesSummary = () => supplierRepository.totalPayables();
 
+/**
+ * الأصناف اللي المورد وردها فعلًا.
+ *
+ * المنتج مش مربوط بمورد في الموديل، وربطه بواحد بيكدب على الواقع: نفس الصنف
+ * بيتجاب من أكتر من مورد. فبنقراها من أوامر الشراء نفسها — اللي اتطلب منه
+ * فعلًا، بآخر سعر شراء اتدفع فيه.
+ */
+export const getSuppliedProducts = async (supplierId) => {
+  const supplier = await supplierRepository.findById(supplierId, { lean: true });
+  if (!supplier) throw ApiError.notFound('المورد غير موجود');
+
+  return PurchaseOrder.aggregate([
+    {
+      $match: {
+        supplier: toObjectId(supplierId),
+        status: { $ne: PURCHASE_ORDER_STATUSES.CANCELLED },
+      },
+    },
+    { $sort: { orderDate: -1 } },
+    { $unwind: '$lines' },
+    {
+      $group: {
+        _id: '$lines.product',
+        // أول قيمة بعد الترتيب تنازليًا = آخر أمر فيه الصنف ده.
+        lastUnitCost: { $first: '$lines.unitCost' },
+        lastOrderDate: { $first: '$orderDate' },
+        orderedQuantity: { $sum: '$lines.quantity' },
+        receivedQuantity: { $sum: '$lines.receivedQuantity' },
+        ordersCount: { $sum: 1 },
+      },
+    },
+    {
+      $lookup: {
+        from: 'products',
+        localField: '_id',
+        foreignField: '_id',
+        as: 'product',
+      },
+    },
+    { $unwind: '$product' },
+    {
+      $lookup: {
+        from: 'categories',
+        localField: 'product.category',
+        foreignField: '_id',
+        as: 'category',
+      },
+    },
+    {
+      $lookup: {
+        from: 'stocks',
+        localField: '_id',
+        foreignField: 'product',
+        as: 'stocks',
+      },
+    },
+    {
+      $project: {
+        _id: 0,
+        id: { $toString: '$_id' },
+        name: '$product.name',
+        sku: '$product.sku',
+        unit: '$product.unit',
+        price: '$product.price',
+        cost: '$product.cost',
+        colorIndex: '$product.colorIndex',
+        minStock: '$product.minStock',
+        trackStock: '$product.trackStock',
+        category: {
+          $let: {
+            vars: { first: { $arrayElemAt: ['$category', 0] } },
+            in: {
+              $cond: [
+                { $ifNull: ['$$first', false] },
+                {
+                  id: { $toString: '$$first._id' },
+                  name: '$$first.name',
+                  icon: '$$first.icon',
+                  color: '$$first.color',
+                },
+                null,
+              ],
+            },
+          },
+        },
+        // الرصيد على كل الفروع — التبويب مش مربوط بفرع.
+        stock: { $sum: '$stocks.quantity' },
+        lastUnitCost: { $round: ['$lastUnitCost', 2] },
+        lastOrderDate: 1,
+        orderedQuantity: 1,
+        receivedQuantity: 1,
+        ordersCount: 1,
+      },
+    },
+    { $sort: { name: 1 } },
+  ]);
+};
+
 export default {
   listSuppliers,
   getSupplierById,
@@ -118,4 +220,5 @@ export default {
   addDue,
   payDue,
   getPayablesSummary,
+  getSuppliedProducts,
 };

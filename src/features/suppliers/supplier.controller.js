@@ -49,9 +49,23 @@ export const pay = asyncHandler(async (req, res) => {
   });
 });
 
+export const suppliedProducts = asyncHandler(async (req, res) => {
+  const items = await supplierService.getSuppliedProducts(req.params.id);
+  sendSuccess(res, { data: items });
+});
+
 export const payables = asyncHandler(async (_req, res) => {
   const summary = await supplierService.getPayablesSummary();
   sendSuccess(res, { data: summary });
 });
 
-export default { list, getOne, create, update, setActiveState, pay, payables };
+export default {
+  list,
+  getOne,
+  create,
+  update,
+  setActiveState,
+  pay,
+  payables,
+  suppliedProducts,
+};

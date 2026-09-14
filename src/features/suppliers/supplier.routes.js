@@ -28,6 +28,12 @@ router.get('/payables', canView, controller.payables);
 
 router.get('/', canView, validate(listSuppliersSchema), controller.list);
 router.get('/:id', canView, validate(getSupplierSchema), controller.getOne);
+router.get(
+  '/:id/products',
+  canView,
+  validate(getSupplierSchema),
+  controller.suppliedProducts,
+);
 
 router.post('/', canManage, validate(createSupplierSchema), controller.create);
 router.post('/:id/payments', canManage, validate(paymentSchema), controller.pay);
