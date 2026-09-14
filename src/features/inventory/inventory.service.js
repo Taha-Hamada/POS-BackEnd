@@ -1,6 +1,11 @@
 import mongoose from 'mongoose';
 
+import { toObjectId, toSearchRegex } from '../../core/base/commonSchemas.js';
 import { STOCK_MOVEMENT_REASONS } from '../../core/constants/index.js';
+import {
+  buildPagination,
+  buildPaginationMeta,
+} from '../../core/utils/pagination.js';
 import ApiError from '../../core/errors/ApiError.js';
 import withTransaction from '../../core/db/transaction.js';
 import Product from '../products/product.model.js';
@@ -124,6 +129,13 @@ export const assertStockAvailable = async (lines, branchId, { session } = {}) =>
   }
 };
 
+/**
+ * قائمة المخزون لفرع، مفلترة ومرتّبة ومقسّمة لصفحات.
+ *
+ * الفلترة بتتعمل في التجميع مش بعد الترقيم. قبل كده كنا بنجيب صفحة الأول
+ * وبعدين نفلترها، فطلب «الأصناف الناقصة» كان بيرجّع الناقص اللي في الصفحة
+ * الأولى بس، والعدّاد كان بيعد كل الأصناف مش المفلترة.
+ */
 export const getStockForBranch = async ({
   branch,
   page,
@@ -133,54 +145,184 @@ export const getStockForBranch = async ({
   category,
   search,
 }) => {
-  const match = { branch };
+  const { page: safePage, limit: safeLimit, skip } = buildPagination({ page, limit });
 
-  const result = await stockRepository.paginate(match, {
-    page,
-    limit,
-    sort: sort ?? '-updatedAt',
-    populate: {
-      path: 'product',
-      select: 'name sku barcode category price cost unit minStock isActive',
-      populate: { path: 'category', select: 'name icon color' },
+  const pipeline = [
+    { $match: { branch: toObjectId(branch) } },
+    {
+      $lookup: {
+        from: 'products',
+        localField: 'product',
+        foreignField: '_id',
+        as: 'product',
+      },
     },
-  });
-
-  // الفلترة على المنتج بتتم بعد الـ populate لأن بياناته في مجموعة تانية.
-  // وحد الطلب الفعلي = تجاوز الفرع لو موجود، وإلا حد المنتج.
-  let items = result.items
-    .filter((item) => item.product)
-    .map((item) => ({
-      ...item,
-      effectiveMinStock: item.minStock ?? item.product.minStock ?? 0,
-    }));
+    { $unwind: '$product' },
+    {
+      $lookup: {
+        from: 'categories',
+        localField: 'product.category',
+        foreignField: '_id',
+        as: 'product.category',
+      },
+    },
+    { $unwind: { path: '$product.category', preserveNullAndEmptyArrays: true } },
+    {
+      // حد الطلب الفعلي = تجاوز الفرع لو موجود، وإلا حد المنتج.
+      $addFields: {
+        effectiveMinStock: {
+          $ifNull: ['$minStock', { $ifNull: ['$product.minStock', 0] }],
+        },
+        available: { $subtract: ['$quantity', '$reserved'] },
+      },
+    },
+  ];
 
   if (category) {
-    items = items.filter(
-      (item) => String(item.product.category?._id ?? item.product.category) === String(category),
-    );
+    pipeline.push({ $match: { 'product.category._id': toObjectId(category) } });
   }
 
   if (search) {
-    const needle = String(search).toLowerCase();
-    items = items.filter(
-      (item) =>
-        item.product.name.toLowerCase().includes(needle) ||
-        item.product.sku.toLowerCase().includes(needle),
-    );
+    const regex = toSearchRegex(search);
+    pipeline.push({
+      $match: { $or: [{ 'product.name': regex }, { 'product.sku': regex }] },
+    });
   }
 
-  if (status === 'out') items = items.filter((item) => item.quantity <= 0);
+  if (status === 'out') pipeline.push({ $match: { quantity: { $lte: 0 } } });
+
   if (status === 'low') {
-    items = items.filter(
-      (item) => item.quantity > 0 && item.quantity <= item.effectiveMinStock,
-    );
-  }
-  if (status === 'ok') {
-    items = items.filter((item) => item.quantity > item.effectiveMinStock);
+    pipeline.push({
+      $match: {
+        $expr: {
+          $and: [
+            { $gt: ['$quantity', 0] },
+            { $lte: ['$quantity', '$effectiveMinStock'] },
+          ],
+        },
+      },
+    });
   }
 
-  return { items, pagination: result.pagination };
+  if (status === 'ok') {
+    pipeline.push({
+      $match: { $expr: { $gt: ['$quantity', '$effectiveMinStock'] } },
+    });
+  }
+
+  // العدّ والصفحة بيتحسبوا من نفس الأنبوب، فالعدّاد بيطابق المعروض دايمًا.
+  const [result] = await stockRepository.aggregate([
+    ...pipeline,
+    {
+      $facet: {
+        items: [
+          { $sort: SORTS[sort] ?? SORTS.default },
+          { $skip: skip },
+          { $limit: safeLimit },
+        ],
+        total: [{ $count: 'value' }],
+      },
+    },
+  ]);
+
+  const total = result?.total?.[0]?.value ?? 0;
+
+  return {
+    items: result?.items ?? [],
+    pagination: buildPaginationMeta({ page: safePage, limit: safeLimit, total }),
+  };
+};
+
+/**
+ * إجماليات مخزون الفرع في طلب واحد.
+ *
+ * البطاقات محتاجة أرقام على كل أصناف الفرع مش على الصفحة المعروضة،
+ * فبتتحسب في الداتابيز بدل ما نجيب كل السجلات عشان نعدّها.
+ */
+export const getBranchSummary = async ({ branch }) => {
+  const soon = new Date();
+  soon.setDate(soon.getDate() + 30);
+
+  const [row] = await stockRepository.aggregate([
+    { $match: { branch: toObjectId(branch) } },
+    {
+      $lookup: {
+        from: 'products',
+        localField: 'product',
+        foreignField: '_id',
+        as: 'product',
+      },
+    },
+    { $unwind: '$product' },
+    { $match: { 'product.isActive': true, 'product.trackStock': true } },
+    {
+      $addFields: {
+        effectiveMinStock: {
+          $ifNull: ['$minStock', { $ifNull: ['$product.minStock', 0] }],
+        },
+      },
+    },
+    {
+      $group: {
+        _id: null,
+        items: { $sum: 1 },
+        units: { $sum: '$quantity' },
+        value: { $sum: { $multiply: ['$quantity', '$product.cost'] } },
+        retailValue: { $sum: { $multiply: ['$quantity', '$product.price'] } },
+        outOfStock: { $sum: { $cond: [{ $lte: ['$quantity', 0] }, 1, 0] } },
+        lowStock: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $gt: ['$quantity', 0] },
+                  { $lte: ['$quantity', '$effectiveMinStock'] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+        nearExpiry: {
+          $sum: {
+            $cond: [
+              {
+                $and: [
+                  { $gt: ['$quantity', 0] },
+                  { $ne: ['$product.expiryDate', null] },
+                  { $lte: ['$product.expiryDate', soon] },
+                ],
+              },
+              1,
+              0,
+            ],
+          },
+        },
+      },
+    },
+  ]);
+
+  return {
+    items: row?.items ?? 0,
+    units: row?.units ?? 0,
+    value: Math.round((row?.value ?? 0) * 100) / 100,
+    retailValue: Math.round((row?.retailValue ?? 0) * 100) / 100,
+    outOfStock: row?.outOfStock ?? 0,
+    lowStock: row?.lowStock ?? 0,
+    nearExpiry: row?.nearExpiry ?? 0,
+  };
+};
+
+/** الفرز المسموح بيه — بنقيّده عشان الطلب مايبعتش أي حقل. */
+const SORTS = {
+  default: { updatedAt: -1 },
+  quantity: { quantity: 1 },
+  '-quantity': { quantity: -1 },
+  available: { available: 1 },
+  '-available': { available: -1 },
+  name: { 'product.name': 1 },
+  '-name': { 'product.name': -1 },
 };
 
 export const listMovements = ({
@@ -380,6 +522,7 @@ export default {
   applyManyMovements,
   assertStockAvailable,
   getStockForBranch,
+  getBranchSummary,
   listMovements,
   adjustStock,
   stocktake,

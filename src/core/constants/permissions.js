@@ -108,6 +108,8 @@ export const ROLE_PERMISSIONS = Object.freeze({
     P.PRODUCT_VIEW, P.PRODUCT_MANAGE,
     P.CATEGORY_VIEW,
     P.SUPPLIER_VIEW,
+    // التحويل بين الفروع محتاج يشوف الفروع عشان يختار الوجهة.
+    P.BRANCH_VIEW,
     P.INVENTORY_VIEW, P.INVENTORY_ADJUST, P.INVENTORY_TRANSFER,
     P.PURCHASE_VIEW, P.PURCHASE_MANAGE,
     P.REPORT_VIEW,

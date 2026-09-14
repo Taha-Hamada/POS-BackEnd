@@ -19,6 +19,14 @@ export const listStock = asyncHandler(async (req, res) => {
   sendPaginated(res, { items, pagination });
 });
 
+export const summary = asyncHandler(async (req, res) => {
+  const data = await inventoryService.getBranchSummary({
+    branch: requireBranch(req, req.query.branch),
+  });
+
+  sendSuccess(res, { data });
+});
+
 export const listMovements = asyncHandler(async (req, res) => {
   const { items, pagination } = await inventoryService.listMovements({
     ...req.query,
@@ -85,6 +93,7 @@ export const lowStock = asyncHandler(async (req, res) => {
 
 export default {
   listStock,
+  summary,
   listMovements,
   adjust,
   stocktake,

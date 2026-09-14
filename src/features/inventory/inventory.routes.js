@@ -27,6 +27,7 @@ const canAdjust = requirePermissions(PERMISSIONS.INVENTORY_ADJUST);
 const canTransfer = requirePermissions(PERMISSIONS.INVENTORY_TRANSFER);
 
 router.get('/stock', canView, validate(listStockSchema), controller.listStock);
+router.get('/summary', canView, validate(lowStockSchema), controller.summary);
 router.get('/movements', canView, validate(listMovementsSchema), controller.listMovements);
 router.get('/low-stock', canView, validate(lowStockSchema), controller.lowStock);
 
