@@ -85,6 +85,13 @@ router.get(
 );
 
 router.get(
+  '/inventory-by-category',
+  ...report(reportService.getInventoryByCategory, {
+    query: z.object({ branch: objectId.optional() }),
+  }),
+);
+
+router.get(
   '/tax',
   ...report(reportService.getTaxReport, {
     query: z.object({

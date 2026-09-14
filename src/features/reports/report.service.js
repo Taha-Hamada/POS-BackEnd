@@ -8,7 +8,9 @@ import stockRepository from '../inventory/stock.repository.js';
 import Invoice from '../invoices/invoice.model.js';
 import * as invoiceService from '../invoices/invoice.service.js';
 import productRepository from '../products/product.repository.js';
+import PurchaseOrder from '../purchases/purchaseOrder.model.js';
 import * as returnService from '../returns/return.service.js';
+import { getSettings } from '../settings/settings.service.js';
 import supplierRepository from '../suppliers/supplier.repository.js';
 
 /** الفواتير اللي بتتحسب في التقارير: المعتمدة بس، من غير المعلّقة والملغاة. */
@@ -105,6 +107,8 @@ export const getSalesSeries = async ({ branch, days = 30 }) => {
     series.push({
       date: key,
       sales: round2(row?.sales ?? 0),
+      // الضريبة محسوبة أصلًا في التجميع، والجداول محتاجاها عمود مستقل.
+      tax: round2(row?.tax ?? 0),
       profit: round2((row?.sales ?? 0) - (row?.tax ?? 0) - (row?.cost ?? 0)),
       invoices: row?.invoices ?? 0,
     });
@@ -274,11 +278,17 @@ export const getBranchComparison = async ({ from, to }) => {
   };
 };
 
-/** الضريبة شهريًا — أساس الإقرار الضريبي. */
+/**
+ * الإقرار الضريبي: المحصّل من المبيعات، والمدفوع في المشتريات، والفرق بينهم.
+ *
+ * المصلحة بتاخد الفرق مش المحصّل كله، فالشاشة لازم تعرض التلاتة.
+ */
 export const getTaxReport = async ({ branch, months = 12 }) => {
   const from = new Date();
   from.setMonth(from.getMonth() - (months - 1), 1);
   from.setHours(0, 0, 0, 0);
+
+  const settings = await getSettings();
 
   const rows = await Invoice.aggregate([
     { $match: periodMatch({ branch, from }) },
@@ -299,12 +309,29 @@ export const getTaxReport = async ({ branch, months = 12 }) => {
     { $sort: { _id: 1 } },
   ]);
 
-  return rows.map((row) => ({
-    month: row._id,
-    taxableBase: round2(row.taxableBase),
-    tax: round2(row.tax),
-    invoices: row.invoices,
-  }));
+  const purchases = await getPurchaseTax({
+    branch,
+    from,
+    taxRate: settings.taxRate,
+  });
+
+  const collected = round2(
+    rows.reduce((sum, row) => sum + row.tax, 0),
+  );
+
+  return {
+    taxRate: settings.taxRate,
+    collected,
+    paid: purchases.tax,
+    net: round2(collected - purchases.tax),
+    purchasesReceived: purchases.received,
+    months: rows.map((row) => ({
+      month: row._id,
+      taxableBase: round2(row.taxableBase),
+      tax: round2(row.tax),
+      invoices: row.invoices,
+    })),
+  };
 };
 
 /** تقرير المخزون بقيمته — التكلفة وسعر البيع المتوقع. */
@@ -345,6 +372,85 @@ export const getInventoryValuation = async ({ branch }) => {
     expectedProfit: round2((row?.retailValue ?? 0) - (row?.costValue ?? 0)),
     outOfStock: row?.outOfStock ?? 0,
   };
+};
+
+/** تقرير المخزون مفصّل بالأقسام — كل قسم بقيمته بالتكلفة وبسعر البيع. */
+export const getInventoryByCategory = async ({ branch }) => {
+  const match = branch ? { branch: toObjectId(branch) } : {};
+
+  const rows = await stockRepository.aggregate([
+    { $match: match },
+    {
+      $lookup: {
+        from: 'products',
+        localField: 'product',
+        foreignField: '_id',
+        as: 'product',
+      },
+    },
+    { $unwind: '$product' },
+    { $match: { 'product.isActive': true, 'product.trackStock': true } },
+    {
+      $lookup: {
+        from: 'categories',
+        localField: 'product.category',
+        foreignField: '_id',
+        as: 'category',
+      },
+    },
+    { $unwind: '$category' },
+    {
+      $group: {
+        _id: '$category._id',
+        name: { $first: '$category.name' },
+        icon: { $first: '$category.icon' },
+        color: { $first: '$category.color' },
+        items: { $sum: 1 },
+        units: { $sum: '$quantity' },
+        cost: { $sum: { $multiply: ['$quantity', '$product.cost'] } },
+        retail: { $sum: { $multiply: ['$quantity', '$product.price'] } },
+      },
+    },
+    { $sort: { cost: -1 } },
+  ]);
+
+  return rows.map((row) => ({
+    category: row._id,
+    name: row.name,
+    icon: row.icon,
+    color: row.color,
+    items: row.items,
+    units: round2(row.units),
+    cost: round2(row.cost),
+    retail: round2(row.retail),
+    expectedProfit: round2(row.retail - row.cost),
+  }));
+};
+
+/**
+ * ضريبة المشتريات — تُخصم من ضريبة المبيعات في الإقرار.
+ *
+ * بتتحسب من القيمة المستلمة فعلًا في أوامر الشراء، مش من قيمة الأوامر كلها،
+ * لأن اللي مااستلمش لسه مادخلش المخزن ومااستحقّتش عليه ضريبة.
+ */
+export const getPurchaseTax = async ({ branch, from, to, taxRate }) => {
+  const match = {};
+
+  if (branch) match.branch = toObjectId(branch);
+  if (from || to) {
+    match.orderDate = {};
+    if (from) match.orderDate.$gte = from;
+    if (to) match.orderDate.$lte = to;
+  }
+
+  const [row] = await PurchaseOrder.aggregate([
+    { $match: match },
+    { $group: { _id: null, received: { $sum: '$receivedValue' } } },
+  ]);
+
+  const received = round2(row?.received ?? 0);
+
+  return { received, tax: round2(received * taxRate) };
 };
 
 /**
@@ -442,4 +548,6 @@ export default {
   getBranchComparison,
   getTaxReport,
   getInventoryValuation,
+  getInventoryByCategory,
+  getPurchaseTax,
 };
