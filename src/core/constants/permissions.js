@@ -86,6 +86,9 @@ export const ROLE_PERMISSIONS = Object.freeze({
     P.RETURN_VIEW, P.RETURN_MANAGE,
     P.INVENTORY_VIEW,
     P.SHIFT_VIEW, P.SHIFT_MANAGE,
+    // المصروف الكاش بيتخصم من درج الوردية، فاللي ماسك الدرج لازم يقدر يسجّله.
+    // الاعتماد مش من حقه — المدير هو اللي بيراجع.
+    P.EXPENSE_VIEW, P.EXPENSE_MANAGE,
     P.PROMOTION_VIEW,
   ],
 
