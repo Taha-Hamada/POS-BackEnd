@@ -192,7 +192,9 @@ export const createReturn = async ({
     await invoice.save({ session });
 
     if (invoice.customer) {
-      if (refundMethod === PAYMENTS.CREDIT) {
+      // صنف سعره صفر بيطلع مرتجع بقيمة صفر، ومفيش فلوس ترجع للحساب،
+      // فبنسجّل المرتجع من غير حركة بدل ما الحركة الصفرية ترفض العملية كلها.
+      if (refundMethod === PAYMENTS.CREDIT && total > 0) {
         await customerService.applyBalanceChange(
           {
             customer: invoice.customer,

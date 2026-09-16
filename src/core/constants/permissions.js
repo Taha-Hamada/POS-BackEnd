@@ -119,9 +119,35 @@ export const ROLE_PERMISSIONS = Object.freeze({
   ],
 });
 
+/**
+ * باقات الأدوار اللي المدير عدّلها من شاشة الصلاحيات.
+ *
+ * بتتقري من الداتابيز مرة عند تشغيل السيرفر وبتتحدّث مع كل حفظ،
+ * عشان حساب الصلاحيات في كل طلب يفضل متزامن ومن غير استعلام إضافي.
+ * لو السيرفر اشتغل على أكتر من عملية، كل عملية لازم تعيد القراءة بعد التعديل.
+ */
+const roleOverrides = new Map();
+
+export const setRolePermissionOverride = (role, permissions) => {
+  if (permissions === null) {
+    roleOverrides.delete(role);
+    return;
+  }
+
+  roleOverrides.set(role, [...permissions]);
+};
+
+export const isRoleCustomized = (role) => roleOverrides.has(role);
+
+/** باقة الدور الفعلية. مدير النظام دايمًا بياخد كل حاجة ومينفعش يتعدّل. */
+export const getRolePermissions = (role) => {
+  if (role === ROLES.ADMIN) return PERMISSION_VALUES;
+  return roleOverrides.get(role) ?? ROLE_PERMISSIONS[role] ?? [];
+};
+
 /** الصلاحيات الفعلية = باقة الدور + إضافات المستخدم − استثناءاته. */
 export const resolvePermissions = ({ role, granted = [], revoked = [] }) => {
-  const base = new Set(ROLE_PERMISSIONS[role] ?? []);
+  const base = new Set(getRolePermissions(role));
   granted.forEach((permission) => base.add(permission));
   revoked.forEach((permission) => base.delete(permission));
   return [...base];

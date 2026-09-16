@@ -72,6 +72,16 @@ export const setActiveState = asyncHandler(async (req, res) => {
   });
 });
 
+export const uploadImage = asyncHandler(async (req, res) => {
+  const product = await productService.setProductImage(req.params.id, req.file);
+  sendSuccess(res, { message: 'اترفعت صورة المنتج', data: product });
+});
+
+export const removeImage = asyncHandler(async (req, res) => {
+  const product = await productService.removeProductImage(req.params.id);
+  sendSuccess(res, { message: 'اتشالت صورة المنتج', data: product });
+});
+
 export const expiring = asyncHandler(async (req, res) => {
   const items = await productService.getExpiringProducts(req.query);
   sendSuccess(res, { data: items });
@@ -86,5 +96,7 @@ export default {
   update,
   bulkPrices,
   setActiveState,
+  uploadImage,
+  removeImage,
   expiring,
 };

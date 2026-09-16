@@ -10,10 +10,22 @@ import * as shiftService from '../shifts/shift.service.js';
 
 import * as invoiceService from './invoice.service.js';
 
-/** الفاتورة لازم يبقى لها فرع — من الطلب أو من فرع الكاشير. */
-const requireBranch = (req) => {
-  const branch = req.body.branch ?? req.user.branch;
-  if (!branch) throw ApiError.badRequest('لازم تحدد الفرع');
+/**
+ * الفاتورة لازم يبقى لها فرع: من الطلب، أو فرع الكاشير، أو فرع ورديته المفتوحة.
+ * الأخيرة عشان الحساب اللي مش مربوط بفرع (زي مدير النظام) يبيع في الفرع
+ * اللي فتح فيه الوردية من غير ما الفرونت يبعته مع كل فاتورة.
+ */
+const requireBranch = async (req) => {
+  let branch = req.body.branch ?? req.user.branch;
+
+  if (!branch) {
+    const openShift = await shiftService.getOpenShift(req.user.id);
+    branch = openShift?.branch?._id ?? openShift?.branch;
+  }
+
+  if (!branch) {
+    throw ApiError.badRequest('لازم تحدد الفرع — افتح وردية في فرع الأول');
+  }
   return branch;
 };
 
@@ -35,7 +47,7 @@ const resolveShift = async (req) => {
 export const create = asyncHandler(async (req, res) => {
   const invoice = await invoiceService.createInvoice({
     ...req.body,
-    branch: requireBranch(req),
+    branch: await requireBranch(req),
     cashier: req.user.id,
     shift: await resolveShift(req),
   });
@@ -46,7 +58,7 @@ export const create = asyncHandler(async (req, res) => {
 export const hold = asyncHandler(async (req, res) => {
   const invoice = await invoiceService.holdInvoice({
     ...req.body,
-    branch: requireBranch(req),
+    branch: await requireBranch(req),
     cashier: req.user.id,
     shift: await resolveShift(req),
   });

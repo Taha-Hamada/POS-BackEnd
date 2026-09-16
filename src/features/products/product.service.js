@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 
+import { productImagePath, removeUploadedFile } from '../../config/uploads.js';
 import { toSearchRegex } from '../../core/base/commonSchemas.js';
 import { STOCK_MOVEMENT_REASONS } from '../../core/constants/index.js';
 import ApiError from '../../core/errors/ApiError.js';
@@ -187,6 +188,37 @@ export const updateProduct = async (id, payload) => {
   return product.populate(POPULATE_CATEGORY);
 };
 
+/**
+ * بيربط الصورة المرفوعة بالمنتج وبيمسح القديمة من القرص.
+ * لو المنتج مش موجود الملف المرفوع بيتمسح عشان مايفضلش يتيم.
+ */
+export const setProductImage = async (id, file) => {
+  const product = await productRepository.findById(id);
+  if (!product) {
+    await removeUploadedFile(productImagePath(file.filename));
+    throw ApiError.notFound('المنتج غير موجود');
+  }
+
+  const previous = product.imageUrl;
+  product.imageUrl = productImagePath(file.filename);
+  await product.save();
+  await removeUploadedFile(previous);
+
+  return product.populate(POPULATE_CATEGORY);
+};
+
+export const removeProductImage = async (id) => {
+  const product = await productRepository.findById(id);
+  if (!product) throw ApiError.notFound('المنتج غير موجود');
+
+  const previous = product.imageUrl;
+  product.imageUrl = null;
+  await product.save();
+  await removeUploadedFile(previous);
+
+  return product.populate(POPULATE_CATEGORY);
+};
+
 /** تعديل سعر جماعي بنسبة أو بمبلغ — بيستخدم في مواسم الغلاء والعروض. */
 export const bulkUpdatePrices = async ({ productIds, category, mode, value }) => {
   const filter = productIds?.length
@@ -232,6 +264,8 @@ export default {
   searchProducts,
   createProduct,
   updateProduct,
+  setProductImage,
+  removeProductImage,
   bulkUpdatePrices,
   setProductActiveState,
   getExpiringProducts,

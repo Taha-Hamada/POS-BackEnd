@@ -13,7 +13,9 @@ import {
   getUserSchema,
   listUsersSchema,
   resetPasswordSchema,
+  roleParamSchema,
   setActiveStateSchema,
+  updateRolePermissionsSchema,
   updatePermissionsSchema,
   updateUserSchema,
 } from './user.validation.js';
@@ -23,6 +25,21 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/catalog', requirePermissions(PERMISSIONS.USER_VIEW), controller.catalog);
+
+// تعديل باقة الدور بيأثر على كل اللي عليه، فمربوط بإدارة المستخدمين.
+router.patch(
+  '/roles/:role',
+  requirePermissions(PERMISSIONS.USER_MANAGE),
+  validate(updateRolePermissionsSchema),
+  controller.updateRolePermissions,
+);
+
+router.delete(
+  '/roles/:role',
+  requirePermissions(PERMISSIONS.USER_MANAGE),
+  validate(roleParamSchema),
+  controller.resetRolePermissions,
+);
 
 router.get(
   '/',

@@ -4,12 +4,8 @@ import {
   sendSuccess,
 } from '../../core/http/apiResponse.js';
 import asyncHandler from '../../core/http/asyncHandler.js';
-import {
-  PERMISSIONS,
-  ROLE_LABELS,
-  ROLE_PERMISSIONS,
-} from '../../core/constants/index.js';
 
+import * as rolePolicyService from './rolePolicy.service.js';
 import * as userService from './user.service.js';
 
 export const list = asyncHandler(async (req, res) => {
@@ -62,20 +58,22 @@ export const setActiveState = asyncHandler(async (req, res) => {
 
 /** كتالوج الأدوار والصلاحيات — الفرونت بيبني منه شاشة الصلاحيات. */
 export const catalog = asyncHandler(async (_req, res) => {
-  sendSuccess(res, {
-    data: {
-      roles: Object.entries(ROLE_LABELS).map(([value, label]) => ({
-        value,
-        label,
-        permissions: ROLE_PERMISSIONS[value] ?? [],
-      })),
-      permissions: Object.entries(PERMISSIONS).map(([key, value]) => ({
-        key,
-        value,
-        group: value.split(':')[0],
-      })),
-    },
-  });
+  const data = await rolePolicyService.getCatalog();
+  sendSuccess(res, { data });
+});
+
+export const updateRolePermissions = asyncHandler(async (req, res) => {
+  const data = await rolePolicyService.updateRolePermissions(
+    req.params.role,
+    req.body.permissions,
+    { userId: req.user.id },
+  );
+  sendSuccess(res, { message: 'اتحفظت صلاحيات الدور', data });
+});
+
+export const resetRolePermissions = asyncHandler(async (req, res) => {
+  const data = await rolePolicyService.resetRolePermissions(req.params.role);
+  sendSuccess(res, { message: 'الدور رجع لصلاحياته الافتراضية', data });
 });
 
 export default {
@@ -87,4 +85,6 @@ export default {
   updatePermissions,
   setActiveState,
   catalog,
+  updateRolePermissions,
+  resetRolePermissions,
 };

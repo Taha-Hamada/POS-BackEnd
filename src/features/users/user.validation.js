@@ -64,6 +64,15 @@ export const setActiveStateSchema = {
   body: z.object({ isActive: z.boolean() }),
 };
 
+export const roleParamSchema = {
+  params: z.object({ role: z.enum(ROLE_VALUES) }),
+};
+
+export const updateRolePermissionsSchema = {
+  params: roleParamSchema.params,
+  body: z.object({ permissions: z.array(permission) }),
+};
+
 export default {
   listUsersSchema,
   getUserSchema,
@@ -72,4 +81,6 @@ export default {
   resetPasswordSchema,
   updatePermissionsSchema,
   setActiveStateSchema,
+  roleParamSchema,
+  updateRolePermissionsSchema,
 };

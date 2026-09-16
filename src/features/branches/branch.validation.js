@@ -1,6 +1,11 @@
 import { z } from 'zod';
 
-import { booleanQuery, idParam, paginationQuery } from '../../core/base/commonSchemas.js';
+import {
+  booleanQuery,
+  idParam,
+  objectId,
+  paginationQuery,
+} from '../../core/base/commonSchemas.js';
 
 const openingHours = z.object({
   from: z.string().regex(/^\d{2}:\d{2}$/, 'الصيغة لازم تكون HH:MM'),
@@ -15,6 +20,8 @@ const branchBody = z.object({
   isMain: z.boolean().optional(),
   isOpen: z.boolean().optional(),
   openingHours: openingHours.optional(),
+  /** null بيشيل المسؤول عن الفرع. */
+  manager: objectId.nullish(),
 });
 
 export const listBranchesSchema = {

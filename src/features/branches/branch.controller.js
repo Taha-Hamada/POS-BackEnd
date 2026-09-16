@@ -12,6 +12,11 @@ export const list = asyncHandler(async (req, res) => {
   sendPaginated(res, { items, pagination });
 });
 
+export const overview = asyncHandler(async (_req, res) => {
+  const data = await branchService.getBranchesOverview();
+  sendSuccess(res, { data });
+});
+
 export const getOne = asyncHandler(async (req, res) => {
   const branch = await branchService.getBranchById(req.params.id);
   sendSuccess(res, { data: branch });
@@ -43,4 +48,4 @@ export const setOpenState = asyncHandler(async (req, res) => {
   });
 });
 
-export default { list, getOne, create, update, deactivate, setOpenState };
+export default { list, overview, getOne, create, update, deactivate, setOpenState };

@@ -158,6 +158,9 @@ export const getStockForBranch = async ({
       },
     },
     { $unwind: '$product' },
+    // نفس فلتر بطاقات الملخص وتنبيهات النواقص: المنتج المعطّل أو اللي
+    // مخزونه مش متتبّع مبيبانش في الجدول، وإلا الأرقام فوق تناقض الصفوف.
+    { $match: { 'product.isActive': true, 'product.trackStock': true } },
     {
       $lookup: {
         from: 'categories',

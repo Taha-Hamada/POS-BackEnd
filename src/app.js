@@ -6,6 +6,7 @@ import morgan from 'morgan';
 
 import env from './config/env.js';
 import logger from './config/logger.js';
+import { uploadsRoot } from './config/uploads.js';
 import { errorHandler, notFoundHandler } from './middlewares/error.middleware.js';
 import { apiRateLimiter } from './middlewares/rateLimit.middleware.js';
 import apiRouter from './routes/index.js';
@@ -35,6 +36,17 @@ export const createApp = () => {
       }),
     );
   }
+
+  // صور المنتجات ملفات ثابتة. الـCORP لازم cross-origin عشان نسخة الويب
+  // (على بورت تاني) تقدر تعرضها — helmet بيقفلها افتراضيًا.
+  app.use(
+    '/uploads',
+    express.static(uploadsRoot, {
+      index: false,
+      maxAge: '7d',
+      setHeaders: (res) => res.set('Cross-Origin-Resource-Policy', 'cross-origin'),
+    }),
+  );
 
   app.use(env.API_PREFIX, apiRateLimiter, apiRouter);
 

@@ -23,6 +23,7 @@ export const CUSTOMER_TIERS = Object.freeze({
   REGULAR: 'regular',
   SILVER: 'silver',
   GOLD: 'gold',
+  PLATINUM: 'platinum',
 });
 
 export const CUSTOMER_TIER_VALUES = Object.freeze(Object.values(CUSTOMER_TIERS));

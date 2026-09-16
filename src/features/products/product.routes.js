@@ -8,6 +8,7 @@ import {
 import validate from '../../middlewares/validate.middleware.js';
 
 import * as controller from './product.controller.js';
+import { productImageUpload } from './product.upload.js';
 import {
   barcodeSchema,
   bulkPriceSchema,
@@ -44,5 +45,15 @@ router.patch(
   validate(setActiveStateSchema),
   controller.setActiveState,
 );
+
+// الصورة multipart مش JSON، فبتعدّي على الرفع بعد التحقق من المعرّف.
+router.post(
+  '/:id/image',
+  canManage,
+  validate(getProductSchema),
+  productImageUpload,
+  controller.uploadImage,
+);
+router.delete('/:id/image', canManage, validate(getProductSchema), controller.removeImage);
 
 export default router;

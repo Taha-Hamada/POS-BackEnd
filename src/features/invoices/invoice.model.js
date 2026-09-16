@@ -30,6 +30,10 @@ const invoiceLineSchema = new mongoose.Schema(
     discountValue: { type: Number, default: 0, min: 0 },
     discountAmount: { type: Number, default: 0, min: 0 },
 
+    /** العرض اللي عمل خصم السطر، لو الخصم جه من عرض مش من الكاشير. */
+    promotion: { type: mongoose.Schema.Types.ObjectId, ref: 'Promotion', default: null },
+    promotionName: { type: String, trim: true, default: '' },
+
     isTaxable: { type: Boolean, default: true },
     taxAmount: { type: Number, default: 0, min: 0 },
 
@@ -92,6 +96,13 @@ const invoiceSchema = new mongoose.Schema(
 
     subtotal: { type: Number, required: true, min: 0 },
     lineDiscountTotal: { type: Number, default: 0, min: 0 },
+
+    /** مستوى العميل وقت البيع وخصمه — جزء من [invoiceDiscount]. */
+    customerTier: { type: String, trim: true, default: null },
+    tierDiscountPercent: { type: Number, default: 0, min: 0, max: 100 },
+    tierDiscount: { type: Number, default: 0, min: 0 },
+
+    /** كل خصومات الفاتورة: خصم المستوى + الخصم اليدوي. */
     invoiceDiscount: { type: Number, default: 0, min: 0 },
     taxRate: { type: Number, default: 0, min: 0, max: 1 },
     taxAmount: { type: Number, default: 0, min: 0 },

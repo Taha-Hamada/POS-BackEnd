@@ -30,7 +30,15 @@ const productBody = z.object({
   isTaxable: z.boolean().optional(),
   expiryDate: z.coerce.date().nullish(),
   variants: z.array(variant).max(50).optional(),
-  imageUrl: z.string().trim().url('رابط الصورة غير صالح').nullish(),
+  // رابط خارجي، أو مسار صورة مرفوعة على السيرفر نفسه.
+  imageUrl: z
+    .string()
+    .trim()
+    .refine(
+      (value) => value.startsWith('/uploads/') || z.string().url().safeParse(value).success,
+      'رابط الصورة غير صالح',
+    )
+    .nullish(),
   colorIndex: z.number().int().min(0).max(20).optional(),
   isActive: z.boolean().optional(),
 });

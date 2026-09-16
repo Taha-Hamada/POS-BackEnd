@@ -28,6 +28,13 @@ router.get(
   controller.list,
 );
 
+// قبل '/:id' عشان "overview" متتقريش كمعرّف فرع.
+router.get(
+  '/overview',
+  requirePermissions(PERMISSIONS.BRANCH_VIEW),
+  controller.overview,
+);
+
 router.get(
   '/:id',
   requirePermissions(PERMISSIONS.BRANCH_VIEW),

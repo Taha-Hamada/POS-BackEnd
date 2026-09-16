@@ -4,20 +4,24 @@ import {
   LOYALTY_ENTRY_TYPES,
 } from '../../core/constants/index.js';
 import ApiError from '../../core/errors/ApiError.js';
+import { tierForPurchases } from '../../core/utils/loyalty.js';
 import { round2 } from '../../core/utils/money.js';
+import { getSettings } from '../settings/settings.service.js';
 
 import customerRepository from './customer.repository.js';
 import { LEDGER_TYPES } from './customerLedger.model.js';
 
-/** حدود الترقية للفئات — الترقية بتتحسب بعد كل فاتورة. */
-const TIER_THRESHOLDS = [
-  { tier: CUSTOMER_TIERS.GOLD, minPurchases: 50_000 },
-  { tier: CUSTOMER_TIERS.SILVER, minPurchases: 15_000 },
-  { tier: CUSTOMER_TIERS.REGULAR, minPurchases: 0 },
-];
+/**
+ * المستوى اللي إجمالي المشتريات بيوصله، بحدود المستويات اللي المدير حددها.
+ * الترقية بتتحسب بعد كل فاتورة، و«عادي» تحت أقل مستوى.
+ */
+export const tierFor = async (totalPurchases) => {
+  const settings = await getSettings();
+  return tierForPurchases(totalPurchases, settings.loyaltyTiers);
+};
 
-export const tierFor = (totalPurchases) =>
-  TIER_THRESHOLDS.find((row) => totalPurchases >= row.minPurchases).tier;
+// العميل الجديد بيبدأ «عادي» — القيمة موجودة هنا عشان القارئ يلاقيها جنب الترقية.
+export const STARTING_TIER = CUSTOMER_TIERS.REGULAR;
 
 const buildFilter = ({ search, tier, isActive, hasDebt }) => {
   const filter = {};
@@ -255,7 +259,7 @@ export const registerPurchase = async (
 
   if (!customer) return null;
 
-  const nextTier = tierFor(customer.totalPurchases);
+  const nextTier = await tierFor(customer.totalPurchases);
 
   if (nextTier !== customer.tier) {
     customer.tier = nextTier;
@@ -276,7 +280,7 @@ export const reversePurchase = async (
 
   if (!customer) return null;
 
-  const nextTier = tierFor(customer.totalPurchases);
+  const nextTier = await tierFor(customer.totalPurchases);
   if (nextTier !== customer.tier) {
     customer.tier = nextTier;
     await customer.save({ session });

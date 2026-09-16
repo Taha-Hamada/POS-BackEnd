@@ -6,8 +6,10 @@ import {
 } from '../../core/constants/index.js';
 import withTransaction from '../../core/db/transaction.js';
 import { nextSequence } from '../../core/db/counter.model.js';
-import { toObjectId } from '../../core/base/commonSchemas.js';
+import { toObjectId, toSearchRegex } from '../../core/base/commonSchemas.js';
 import ApiError from '../../core/errors/ApiError.js';
+import { tierDiscountPercent } from '../../core/utils/loyalty.js';
+import Customer from '../customers/customer.model.js';
 import * as customerService from '../customers/customer.service.js';
 import { LEDGER_TYPES } from '../customers/customerLedger.model.js';
 import {
@@ -16,6 +18,11 @@ import {
 } from '../inventory/inventory.service.js';
 import stockRepository from '../inventory/stock.repository.js';
 import Product from '../products/product.model.js';
+import {
+  applyPromotions,
+  appliedPromotionIds,
+} from '../promotions/promotion.pricing.js';
+import promotionRepository from '../promotions/promotion.repository.js';
 import { getSettings } from '../settings/settings.service.js';
 
 import invoiceRepository from './invoice.repository.js';
@@ -59,6 +66,7 @@ const resolveLines = async (requestedLines) => {
       discountValue: line.discountValue ?? 0,
       isTaxable: product.isTaxable,
       trackStock: product.trackStock,
+      category: product.category,
     };
   });
 };
@@ -67,7 +75,53 @@ const linesNeedingStock = (lines) => lines.filter((line) => line.trackStock);
 
 /** بيشيل الحقول المساعدة اللي مش بتتخزن في المستند. */
 const stripHelpers = (lines) =>
-  lines.map(({ trackStock, ...line }) => line);
+  lines.map(({ trackStock, category, ...line }) => line);
+
+/**
+ * كل اللي بيحدد سعر الفاتورة غير الأصناف: الإعدادات، العروض الشغالة،
+ * ومستوى العميل. البيع والتعليق بيحسبوا بنفس الدالة عشان مايختلفوش.
+ */
+const priceSale = async ({ requestedLines, discount, customer }) => {
+  const [settings, promotions, customerDoc, resolved] = await Promise.all([
+    getSettings(),
+    promotionRepository.findLive(),
+    customer ? Customer.findById(customer).select('tier').lean() : null,
+    resolveLines(requestedLines),
+  ]);
+
+  const customerTier = customerDoc?.tier ?? null;
+  const tierPercent = customerTier
+    ? tierDiscountPercent(customerTier, settings.loyaltyTiers)
+    : 0;
+
+  const priced = applyPromotions(resolved, promotions);
+
+  const computed = calculateInvoice({
+    lines: priced,
+    discount,
+    taxRate: settings.taxRate,
+    tierDiscountPercent: tierPercent,
+  });
+
+  return { settings, resolved: priced, computed, customerTier, tierPercent };
+};
+
+/** حقول الخصم والمستوى اللي بتتخزن مع الفاتورة معتمدة كانت أو معلّقة. */
+const pricingFields = ({ computed, discount, customerTier, tierPercent }) => ({
+  lines: stripHelpers(computed.lines),
+  discountType: discount?.type ?? null,
+  discountValue: discount?.value ?? 0,
+  subtotal: computed.subtotal,
+  lineDiscountTotal: computed.lineDiscountTotal,
+  customerTier,
+  tierDiscountPercent: tierPercent,
+  tierDiscount: computed.tierDiscount,
+  invoiceDiscount: computed.invoiceDiscount,
+  taxRate: computed.taxRate,
+  taxAmount: computed.taxAmount,
+  total: computed.total,
+  costTotal: computed.costTotal,
+});
 
 const assertPaymentsCover = ({ total, payments, settings, customer }) => {
   const settlement = settlePayments({ total, payments });
@@ -113,14 +167,8 @@ export const createInvoice = async ({
   label = '',
   note = '',
 }) => {
-  const settings = await getSettings();
-  const resolved = await resolveLines(requestedLines);
-
-  const computed = calculateInvoice({
-    lines: resolved,
-    discount,
-    taxRate: settings.taxRate,
-  });
+  const pricing = await priceSale({ requestedLines, discount, customer });
+  const { settings, resolved, computed } = pricing;
 
   const settlement = assertPaymentsCover({
     total: computed.total,
@@ -151,16 +199,7 @@ export const createInvoice = async ({
           shift,
           customer,
           status: INVOICE_STATUSES.COMPLETED,
-          lines: stripHelpers(computed.lines),
-          discountType: discount?.type ?? null,
-          discountValue: discount?.value ?? 0,
-          subtotal: computed.subtotal,
-          lineDiscountTotal: computed.lineDiscountTotal,
-          invoiceDiscount: computed.invoiceDiscount,
-          taxRate: computed.taxRate,
-          taxAmount: computed.taxAmount,
-          total: computed.total,
-          costTotal: computed.costTotal,
+          ...pricingFields({ ...pricing, discount }),
           payments,
           paidAmount: settlement.paidAmount,
           creditAmount: settlement.creditAmount,
@@ -171,6 +210,12 @@ export const createInvoice = async ({
       ],
       { session },
     );
+
+    // عدّاد الاستخدام بيزيد مرة لكل فاتورة، مهما العرض اتطبق على كام سطر.
+    const promotionIds = appliedPromotionIds(computed.lines);
+    if (promotionIds.length > 0) {
+      await promotionRepository.incrementUsage(promotionIds, { session });
+    }
 
     for (const line of stockLines) {
       await applyStockMovement(
@@ -256,14 +301,8 @@ export const holdInvoice = async ({
   label = '',
   note = '',
 }) => {
-  const settings = await getSettings();
-  const resolved = await resolveLines(requestedLines);
-
-  const computed = calculateInvoice({
-    lines: resolved,
-    discount,
-    taxRate: settings.taxRate,
-  });
+  const pricing = await priceSale({ requestedLines, discount, customer });
+  const { settings, resolved } = pricing;
 
   const stockLines = linesNeedingStock(resolved);
 
@@ -276,16 +315,7 @@ export const holdInvoice = async ({
           shift,
           customer,
           status: INVOICE_STATUSES.HELD,
-          lines: stripHelpers(computed.lines),
-          discountType: discount?.type ?? null,
-          discountValue: discount?.value ?? 0,
-          subtotal: computed.subtotal,
-          lineDiscountTotal: computed.lineDiscountTotal,
-          invoiceDiscount: computed.invoiceDiscount,
-          taxRate: computed.taxRate,
-          taxAmount: computed.taxAmount,
-          total: computed.total,
-          costTotal: computed.costTotal,
+          ...pricingFields({ ...pricing, discount }),
           label: label || 'فاتورة معلّقة',
           note,
         },
@@ -369,11 +399,13 @@ export const checkoutHeldInvoice = async (id, { payments, discount, customer }) 
     cashier: invoice.cashier,
     shift: invoice.shift,
     customer: customer ?? invoice.customer,
+    // خصم العرض مش خصم يدوي: بيتحسب من جديد وقت الاعتماد، عشان العرض
+    // اللي خلص وقت ما الفاتورة كانت معلّقة مايتطبقش.
     lines: invoice.lines.map((line) => ({
       product: line.product,
       quantity: line.quantity,
-      discountType: line.discountType,
-      discountValue: line.discountValue,
+      discountType: line.promotion ? null : line.discountType,
+      discountValue: line.promotion ? 0 : line.discountValue,
     })),
     discount:
       discount ??
@@ -409,7 +441,7 @@ const buildFilter = ({
   else filter.status = { $ne: INVOICE_STATUSES.HELD };
 
   if (paymentMethod) filter['payments.method'] = paymentMethod;
-  if (search) filter.number = new RegExp(`${search}`, 'i');
+  if (search) filter.number = toSearchRegex(search);
 
   if (from || to) {
     filter.createdAt = {};

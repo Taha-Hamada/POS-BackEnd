@@ -25,6 +25,9 @@ const envSchema = z.object({
 
   CORS_ORIGINS: z.string().default('*'),
 
+  /** فولدر الملفات المرفوعة (صور المنتجات) — نسبي لمكان تشغيل السيرفر. */
+  UPLOADS_DIR: z.string().default('uploads'),
+
   RATE_LIMIT_WINDOW_MINUTES: z.coerce.number().positive().default(15),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(3000),
 

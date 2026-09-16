@@ -9,6 +9,7 @@ import expenseRoutes from '../features/expenses/expense.routes.js';
 import inventoryRoutes from '../features/inventory/inventory.routes.js';
 import invoiceRoutes from '../features/invoices/invoice.routes.js';
 import productRoutes from '../features/products/product.routes.js';
+import promotionRoutes from '../features/promotions/promotion.routes.js';
 import purchaseRoutes from '../features/purchases/purchase.routes.js';
 import reportRoutes from '../features/reports/report.routes.js';
 import returnRoutes from '../features/returns/return.routes.js';
@@ -50,6 +51,7 @@ router.use('/returns', returnRoutes);
 router.use('/shifts', shiftRoutes);
 router.use('/expenses', expenseRoutes);
 router.use('/purchase-orders', purchaseRoutes);
+router.use('/promotions', promotionRoutes);
 router.use('/reports', reportRoutes);
 router.use('/settings', settingsRoutes);
 
