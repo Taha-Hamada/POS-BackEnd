@@ -2,13 +2,11 @@ import BaseRepository from '../../core/base/BaseRepository.js';
 
 import Customer from './customer.model.js';
 import CustomerLedger from './customerLedger.model.js';
-import LoyaltyEntry from './loyaltyEntry.model.js';
 
 class CustomerRepository extends BaseRepository {
   constructor() {
     super(Customer);
     this.ledger = new BaseRepository(CustomerLedger);
-    this.loyalty = new BaseRepository(LoyaltyEntry);
   }
 
   findByPhone(phone) {
@@ -23,22 +21,6 @@ class CustomerRepository extends BaseRepository {
     return this.model.findByIdAndUpdate(
       customerId,
       { $inc: { balance: delta } },
-      { new: true, session },
-    );
-  }
-
-  /**
-   * بيعدّل النقط. الاستهلاك بيشترط توفرها في نفس العملية عشان الرصيد مايخشش سالب،
-   * إلا لما نكون بنصحّح رصيد (سحب نقط فاتورة ملغاة) فبنسمح بالنزول.
-   */
-  applyPointsDelta(customerId, delta, { session, allowNegative = false } = {}) {
-    const filter = { _id: customerId };
-
-    if (delta < 0 && !allowNegative) filter.points = { $gte: Math.abs(delta) };
-
-    return this.model.findOneAndUpdate(
-      filter,
-      { $inc: { points: delta } },
       { new: true, session },
     );
   }
@@ -60,14 +42,6 @@ class CustomerRepository extends BaseRepository {
 
   listLedger(filter, options) {
     return this.ledger.paginate(filter, options);
-  }
-
-  addLoyaltyEntry(payload, { session } = {}) {
-    return LoyaltyEntry.create([payload], { session }).then(([doc]) => doc);
-  }
-
-  listLoyalty(filter, options) {
-    return this.loyalty.paginate(filter, options);
   }
 
   /** بيعكس إجماليات فاتورة اتلغت من غير ما ينزل بالعدّاد تحت الصفر. */

@@ -19,15 +19,6 @@ export const DISCOUNT_TYPES = Object.freeze({
 
 export const DISCOUNT_TYPE_VALUES = Object.freeze(Object.values(DISCOUNT_TYPES));
 
-export const CUSTOMER_TIERS = Object.freeze({
-  REGULAR: 'regular',
-  SILVER: 'silver',
-  GOLD: 'gold',
-  PLATINUM: 'platinum',
-});
-
-export const CUSTOMER_TIER_VALUES = Object.freeze(Object.values(CUSTOMER_TIERS));
-
 export const INVOICE_STATUSES = Object.freeze({
   HELD: 'held',
   COMPLETED: 'completed',
@@ -95,12 +86,3 @@ export const PROMOTION_TYPE_VALUES = Object.freeze(
   Object.values(PROMOTION_TYPES),
 );
 
-export const LOYALTY_ENTRY_TYPES = Object.freeze({
-  EARN: 'earn',
-  REDEEM: 'redeem',
-  ADJUST: 'adjust',
-});
-
-export const LOYALTY_ENTRY_TYPE_VALUES = Object.freeze(
-  Object.values(LOYALTY_ENTRY_TYPES),
-);

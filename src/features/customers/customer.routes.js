@@ -14,10 +14,8 @@ import {
   getCustomerSchema,
   ledgerSchema,
   listCustomersSchema,
-  loyaltySchema,
   paymentSchema,
   phoneLookupSchema,
-  redeemSchema,
   setActiveStateSchema,
   updateCustomerSchema,
 } from './customer.validation.js';
@@ -35,11 +33,9 @@ router.get('/phone/:phone', canView, validate(phoneLookupSchema), controller.byP
 router.get('/', canView, validate(listCustomersSchema), controller.list);
 router.get('/:id', canView, validate(getCustomerSchema), controller.getOne);
 router.get('/:id/ledger', canView, validate(ledgerSchema), controller.ledger);
-router.get('/:id/loyalty', canView, validate(loyaltySchema), controller.loyaltyHistory);
 
 router.post('/', canManage, validate(createCustomerSchema), controller.create);
 router.post('/:id/payments', canManage, validate(paymentSchema), controller.pay);
-router.post('/:id/loyalty/redeem', canManage, validate(redeemSchema), controller.redeem);
 
 // التعديل اليدوي على الرصيد بيغيّر أرقام مالية، فمربوط بصلاحية المحاسبة.
 router.post(

@@ -4,13 +4,9 @@ import createApp from './app.js';
 import { connectDatabase, disconnectDatabase } from './config/database.js';
 import env from './config/env.js';
 import logger from './config/logger.js';
-import { loadRolePolicies } from './features/users/rolePolicy.service.js';
 
 const start = async () => {
   await connectDatabase();
-
-  // لازم تتقري قبل أول طلب، وإلا الصلاحيات تتحسب بالباقات الافتراضية.
-  await loadRolePolicies();
 
   const app = createApp();
   const server = app.listen(env.PORT, () => {

@@ -1,6 +1,5 @@
 import {
   INVOICE_STATUSES,
-  LOYALTY_ENTRY_TYPES,
   PAYMENT_METHODS,
   STOCK_MOVEMENT_REASONS,
 } from '../../core/constants/index.js';
@@ -8,8 +7,6 @@ import withTransaction from '../../core/db/transaction.js';
 import { nextSequence } from '../../core/db/counter.model.js';
 import { toObjectId, toSearchRegex } from '../../core/base/commonSchemas.js';
 import ApiError from '../../core/errors/ApiError.js';
-import { tierDiscountPercent } from '../../core/utils/loyalty.js';
-import Customer from '../customers/customer.model.js';
 import * as customerService from '../customers/customer.service.js';
 import { LEDGER_TYPES } from '../customers/customerLedger.model.js';
 import {
@@ -78,21 +75,15 @@ const stripHelpers = (lines) =>
   lines.map(({ trackStock, category, ...line }) => line);
 
 /**
- * كل اللي بيحدد سعر الفاتورة غير الأصناف: الإعدادات، العروض الشغالة،
- * ومستوى العميل. البيع والتعليق بيحسبوا بنفس الدالة عشان مايختلفوش.
+ * كل اللي بيحدد سعر الفاتورة غير الأصناف: الإعدادات والعروض الشغالة.
+ * البيع والتعليق بيحسبوا بنفس الدالة عشان مايختلفوش.
  */
-const priceSale = async ({ requestedLines, discount, customer }) => {
-  const [settings, promotions, customerDoc, resolved] = await Promise.all([
+const priceSale = async ({ requestedLines, discount }) => {
+  const [settings, promotions, resolved] = await Promise.all([
     getSettings(),
     promotionRepository.findLive(),
-    customer ? Customer.findById(customer).select('tier').lean() : null,
     resolveLines(requestedLines),
   ]);
-
-  const customerTier = customerDoc?.tier ?? null;
-  const tierPercent = customerTier
-    ? tierDiscountPercent(customerTier, settings.loyaltyTiers)
-    : 0;
 
   const priced = applyPromotions(resolved, promotions);
 
@@ -100,22 +91,18 @@ const priceSale = async ({ requestedLines, discount, customer }) => {
     lines: priced,
     discount,
     taxRate: settings.taxRate,
-    tierDiscountPercent: tierPercent,
   });
 
-  return { settings, resolved: priced, computed, customerTier, tierPercent };
+  return { settings, resolved: priced, computed };
 };
 
-/** حقول الخصم والمستوى اللي بتتخزن مع الفاتورة معتمدة كانت أو معلّقة. */
-const pricingFields = ({ computed, discount, customerTier, tierPercent }) => ({
+/** حقول الخصم اللي بتتخزن مع الفاتورة معتمدة كانت أو معلّقة. */
+const pricingFields = ({ computed, discount }) => ({
   lines: stripHelpers(computed.lines),
   discountType: discount?.type ?? null,
   discountValue: discount?.value ?? 0,
   subtotal: computed.subtotal,
   lineDiscountTotal: computed.lineDiscountTotal,
-  customerTier,
-  tierDiscountPercent: tierPercent,
-  tierDiscount: computed.tierDiscount,
   invoiceDiscount: computed.invoiceDiscount,
   taxRate: computed.taxRate,
   taxAmount: computed.taxAmount,
@@ -255,36 +242,10 @@ export const createInvoice = async ({
           { session },
         );
       }
-
-      await awardLoyaltyPoints(
-        { customer, amount: computed.total, settings, invoice: invoice._id },
-        { session },
-      );
     }
 
     return invoice;
   });
-};
-
-/** نقط الولاء بتتحسب على الإجمالي بعد الضريبة وبتتقرّب للأسفل. */
-const awardLoyaltyPoints = async (
-  { customer, amount, settings, invoice },
-  { session } = {},
-) => {
-  const points = Math.floor(amount * settings.pointsPerCurrency);
-  if (points <= 0) return null;
-
-  return customerService.applyPointsChange(
-    {
-      customer,
-      points,
-      reason: LOYALTY_ENTRY_TYPES.EARN,
-      referenceType: 'invoice',
-      reference: invoice,
-      note: 'نقط فاتورة',
-    },
-    { session },
-  );
 };
 
 /**

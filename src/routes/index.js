@@ -16,7 +16,6 @@ import returnRoutes from '../features/returns/return.routes.js';
 import shiftRoutes from '../features/shifts/shift.routes.js';
 import settingsRoutes from '../features/settings/settings.routes.js';
 import supplierRoutes from '../features/suppliers/supplier.routes.js';
-import userRoutes from '../features/users/user.routes.js';
 
 const router = Router();
 
@@ -39,7 +38,6 @@ router.get('/health', (_req, res) => {
  * الترتيب مش مهم لأن المسارات مالهاش تداخل، بس بنسيبه مرتّب عشان القراءة.
  */
 router.use('/auth', authRoutes);
-router.use('/users', userRoutes);
 router.use('/branches', branchRoutes);
 router.use('/categories', categoryRoutes);
 router.use('/products', productRoutes);

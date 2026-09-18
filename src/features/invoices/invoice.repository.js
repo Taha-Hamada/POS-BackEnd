@@ -18,7 +18,7 @@ class InvoiceRepository extends BaseRepository {
     return [
       { path: 'branch', select: 'name code' },
       { path: 'cashier', select: 'name username' },
-      { path: 'customer', select: 'name phone tier balance' },
+      { path: 'customer', select: 'name phone balance' },
       { path: 'lines.product', select: 'name sku unit imageUrl' },
     ];
   }

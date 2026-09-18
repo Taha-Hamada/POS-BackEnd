@@ -1,52 +1,25 @@
 import { toSearchRegex } from '../../core/base/commonSchemas.js';
-import {
-  CUSTOMER_TIERS,
-  LOYALTY_ENTRY_TYPES,
-} from '../../core/constants/index.js';
 import ApiError from '../../core/errors/ApiError.js';
-import { tierForPurchases } from '../../core/utils/loyalty.js';
 import { round2 } from '../../core/utils/money.js';
-import { getSettings } from '../settings/settings.service.js';
 
 import customerRepository from './customer.repository.js';
 import { LEDGER_TYPES } from './customerLedger.model.js';
 
-/**
- * المستوى اللي إجمالي المشتريات بيوصله، بحدود المستويات اللي المدير حددها.
- * الترقية بتتحسب بعد كل فاتورة، و«عادي» تحت أقل مستوى.
- */
-export const tierFor = async (totalPurchases) => {
-  const settings = await getSettings();
-  return tierForPurchases(totalPurchases, settings.loyaltyTiers);
-};
-
-// العميل الجديد بيبدأ «عادي» — القيمة موجودة هنا عشان القارئ يلاقيها جنب الترقية.
-export const STARTING_TIER = CUSTOMER_TIERS.REGULAR;
-
-const buildFilter = ({ search, tier, isActive, hasDebt }) => {
+const buildFilter = ({ search, isActive, hasDebt }) => {
   const filter = {};
 
   if (search) {
     const regex = toSearchRegex(search);
     filter.$or = [{ name: regex }, { phone: regex }, { email: regex }];
   }
-  if (tier) filter.tier = tier;
   if (isActive !== undefined) filter.isActive = isActive;
   if (hasDebt) filter.balance = { $lt: 0 };
 
   return filter;
 };
 
-export const listCustomers = ({
-  page,
-  limit,
-  sort,
-  search,
-  tier,
-  isActive,
-  hasDebt,
-}) =>
-  customerRepository.paginate(buildFilter({ search, tier, isActive, hasDebt }), {
+export const listCustomers = ({ page, limit, sort, search, isActive, hasDebt }) =>
+  customerRepository.paginate(buildFilter({ search, isActive, hasDebt }), {
     page,
     limit,
     sort: sort ?? '-lastVisitAt name',
@@ -80,9 +53,8 @@ export const updateCustomer = async (id, payload) => {
     if (clash) throw ApiError.conflict('رقم الموبايل مسجّل لعميل تاني');
   }
 
-  // الرصيد والنقط مالهمش تعديل مباشر — ليهم مسارات بتكتب في كشف الحساب.
+  // الرصيد مالوش تعديل مباشر — ليه مسار بيكتب في كشف الحساب.
   delete payload.balance;
-  delete payload.points;
   delete payload.totalPurchases;
   delete payload.ordersCount;
 
@@ -248,162 +220,17 @@ export const getLedger = ({ customer, type, from, to, page, limit }) => {
   });
 };
 
-/** بيتنادى بعد كل فاتورة عشان يحدّث الإجماليات ويرقّي الفئة لو استحقت. */
-export const registerPurchase = async (
+/** بيتنادى بعد كل فاتورة عشان يحدّث إجماليات العميل. */
+export const registerPurchase = (
   { customer: customerId, amount },
   { session } = {},
-) => {
-  const customer = await customerRepository.recordPurchase(customerId, amount, {
-    session,
-  });
+) => customerRepository.recordPurchase(customerId, amount, { session });
 
-  if (!customer) return null;
-
-  const nextTier = await tierFor(customer.totalPurchases);
-
-  if (nextTier !== customer.tier) {
-    customer.tier = nextTier;
-    await customer.save({ session });
-  }
-
-  return customer;
-};
-
-/** بيعكس إجماليات الشراء بعد إلغاء فاتورة، وبينزّل الفئة لو الإجمالي نقص. */
-export const reversePurchase = async (
-  { customer: customerId, amount, invoice },
+/** بيعكس إجماليات الشراء بعد إلغاء فاتورة. */
+export const reversePurchase = (
+  { customer: customerId, amount },
   { session } = {},
-) => {
-  const customer = await customerRepository.reversePurchase(customerId, amount, {
-    session,
-  });
-
-  if (!customer) return null;
-
-  const nextTier = await tierFor(customer.totalPurchases);
-  if (nextTier !== customer.tier) {
-    customer.tier = nextTier;
-    await customer.save({ session });
-  }
-
-  // النقط اللي اتكسبت من الفاتورة الملغاة بترجع.
-  const earned = await customerRepository.loyalty.findOne(
-    { customer: customerId, reference: invoice, type: LOYALTY_ENTRY_TYPES.EARN },
-    { lean: true },
-  );
-
-  if (earned) {
-    await applyPointsChange(
-      {
-        customer: customerId,
-        points: -earned.points,
-        reason: LOYALTY_ENTRY_TYPES.ADJUST,
-        referenceType: 'invoice_void',
-        reference: invoice,
-        note: 'سحب نقط فاتورة ملغاة',
-        allowNegative: true,
-      },
-      { session },
-    );
-  }
-
-  return customer;
-};
-
-/**
- * الدالة الوحيدة اللي بتحرّك نقط العميل.
- * الاستهلاك بيفشل لو النقط مش كفاية، والرصيد بعد التعديل بيتسجّل في سطر السجل.
- */
-export const applyPointsChange = async (
-  {
-    customer: customerId,
-    points,
-    reason,
-    valueAmount = 0,
-    referenceType = null,
-    reference = null,
-    note = '',
-    performedBy = null,
-    allowNegative = false,
-  },
-  { session } = {},
-) => {
-  if (!points) throw ApiError.badRequest('عدد النقط مينفعش يكون صفر');
-
-  const customer = await customerRepository.applyPointsDelta(customerId, points, {
-    session,
-    allowNegative,
-  });
-
-  if (!customer) {
-    throw ApiError.badRequest('نقط العميل مش كفاية', {
-      code: 'INSUFFICIENT_POINTS',
-    });
-  }
-
-  // السحب المسموح له بالسالب ممكن ينزل تحت الصفر، فبنقفل الرصيد عند صفر.
-  if (customer.points < 0) {
-    customer.points = 0;
-    await customer.save({ session });
-  }
-
-  const entry = await customerRepository.addLoyaltyEntry(
-    {
-      customer: customerId,
-      type: reason,
-      points,
-      balanceAfter: customer.points,
-      valueAmount,
-      referenceType,
-      reference,
-      note,
-      performedBy,
-    },
-    { session },
-  );
-
-  return { customer, entry };
-};
-
-/** استبدال نقط بخصم — بيرجّع قيمة الخصم بالعملة. */
-export const redeemPoints = async ({
-  customer: customerId,
-  points,
-  settings,
-  performedBy,
-}) => {
-  if (points < settings.minPointsToRedeem) {
-    throw ApiError.badRequest(
-      `أقل عدد نقط للاستبدال ${settings.minPointsToRedeem}`,
-      { code: 'BELOW_MIN_POINTS' },
-    );
-  }
-
-  const valueAmount = round2(points * settings.currencyPerPoint);
-
-  const result = await applyPointsChange({
-    customer: customerId,
-    points: -points,
-    reason: LOYALTY_ENTRY_TYPES.REDEEM,
-    valueAmount,
-    referenceType: 'manual_redeem',
-    note: `استبدال ${points} نقطة`,
-    performedBy,
-  });
-
-  return { ...result, valueAmount };
-};
-
-export const getLoyaltyHistory = ({ customer, page, limit }) =>
-  customerRepository.listLoyalty(
-    { customer },
-    {
-      page,
-      limit,
-      sort: '-createdAt',
-      populate: { path: 'performedBy', select: 'name username' },
-    },
-  );
+) => customerRepository.reversePurchase(customerId, amount, { session });
 
 export const getReceivablesSummary = () => customerRepository.totalReceivables();
 
@@ -421,9 +248,5 @@ export default {
   getLedger,
   registerPurchase,
   reversePurchase,
-  applyPointsChange,
-  redeemPoints,
-  getLoyaltyHistory,
   getReceivablesSummary,
-  tierFor,
 };

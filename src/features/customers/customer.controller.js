@@ -4,7 +4,6 @@ import {
   sendSuccess,
 } from '../../core/http/apiResponse.js';
 import asyncHandler from '../../core/http/asyncHandler.js';
-import { getSettings } from '../settings/settings.service.js';
 
 import * as customerService from './customer.service.js';
 
@@ -77,30 +76,6 @@ export const ledger = asyncHandler(async (req, res) => {
   sendPaginated(res, { items, pagination });
 });
 
-export const loyaltyHistory = asyncHandler(async (req, res) => {
-  const { items, pagination } = await customerService.getLoyaltyHistory({
-    customer: req.params.id,
-    ...req.query,
-  });
-  sendPaginated(res, { items, pagination });
-});
-
-export const redeem = asyncHandler(async (req, res) => {
-  const settings = await getSettings();
-
-  const result = await customerService.redeemPoints({
-    customer: req.params.id,
-    points: req.body.points,
-    settings,
-    performedBy: req.user.id,
-  });
-
-  sendSuccess(res, {
-    message: `اتستبدلت ${req.body.points} نقطة بقيمة ${result.valueAmount}`,
-    data: result,
-  });
-});
-
 export const receivables = asyncHandler(async (_req, res) => {
   const summary = await customerService.getReceivablesSummary();
   sendSuccess(res, { data: summary });
@@ -116,7 +91,5 @@ export default {
   pay,
   adjust,
   ledger,
-  loyaltyHistory,
-  redeem,
   receivables,
 };

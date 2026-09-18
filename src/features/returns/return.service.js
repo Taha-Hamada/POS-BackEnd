@@ -2,7 +2,6 @@ import BaseRepository from '../../core/base/BaseRepository.js';
 import { toObjectId } from '../../core/base/commonSchemas.js';
 import {
   INVOICE_STATUSES,
-  LOYALTY_ENTRY_TYPES,
   PAYMENT_METHODS,
   STOCK_MOVEMENT_REASONS,
 } from '../../core/constants/index.js';
@@ -211,26 +210,9 @@ export const createReturn = async ({
       }
 
       await customerService.reversePurchase(
-        { customer: invoice.customer, amount: total, invoice: invoice._id },
+        { customer: invoice.customer, amount: total },
         { session },
       );
-
-      // النقط اللي اتكسبت على القيمة المرتجعة بترجع.
-      const points = Math.floor(total * settings.pointsPerCurrency);
-      if (points > 0) {
-        await customerService.applyPointsChange(
-          {
-            customer: invoice.customer,
-            points: -points,
-            reason: LOYALTY_ENTRY_TYPES.ADJUST,
-            referenceType: 'return',
-            reference: saleReturn._id,
-            note: `سحب نقط مرتجع ${number}`,
-            allowNegative: true,
-          },
-          { session },
-        );
-      }
     }
 
     return saleReturn;

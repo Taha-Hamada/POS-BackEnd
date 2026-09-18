@@ -97,12 +97,7 @@ const invoiceSchema = new mongoose.Schema(
     subtotal: { type: Number, required: true, min: 0 },
     lineDiscountTotal: { type: Number, default: 0, min: 0 },
 
-    /** مستوى العميل وقت البيع وخصمه — جزء من [invoiceDiscount]. */
-    customerTier: { type: String, trim: true, default: null },
-    tierDiscountPercent: { type: Number, default: 0, min: 0, max: 100 },
-    tierDiscount: { type: Number, default: 0, min: 0 },
-
-    /** كل خصومات الفاتورة: خصم المستوى + الخصم اليدوي. */
+    /** خصم الفاتورة اليدوي. */
     invoiceDiscount: { type: Number, default: 0, min: 0 },
     taxRate: { type: Number, default: 0, min: 0, max: 1 },
     taxAmount: { type: Number, default: 0, min: 0 },

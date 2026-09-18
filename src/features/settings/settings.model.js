@@ -1,22 +1,6 @@
 import mongoose from 'mongoose';
 
 import env from '../../config/env.js';
-import {
-  DEFAULT_LOYALTY_TIERS,
-  EDITABLE_TIER_KEYS,
-} from '../../core/constants/loyalty.js';
-
-/** مستوى عضوية: العميل بيوصله بإجمالي مشترياته وبياخد خصم تلقائي على فواتيره. */
-const loyaltyTierSchema = new mongoose.Schema(
-  {
-    key: { type: String, enum: EDITABLE_TIER_KEYS, required: true },
-    name: { type: String, trim: true, required: true, maxlength: 40 },
-    minPurchases: { type: Number, required: true, min: 0 },
-    discountPercent: { type: Number, default: 0, min: 0, max: 100 },
-    benefits: [{ type: String, trim: true, maxlength: 120 }],
-  },
-  { _id: false },
-);
 
 /**
  * إعدادات المتجر — مستند واحد بس في المجموعة.
@@ -42,17 +26,6 @@ const settingsSchema = new mongoose.Schema(
 
     receiptFooter: { type: String, trim: true, default: 'شكرًا لزيارتكم' },
     receiptWidthMm: { type: Number, default: 80, min: 48, max: 120 },
-
-    /** نقطة ولاء لكل وحدة عملة، والعكس لما العميل يستبدل. */
-    pointsPerCurrency: { type: Number, default: 1, min: 0 },
-    currencyPerPoint: { type: Number, default: 0.1, min: 0 },
-    minPointsToRedeem: { type: Number, default: 100, min: 0 },
-
-    /** مستويات العضوية — الخدمة بترجّع الافتراضي لو المستند القديم مافيهوش. */
-    loyaltyTiers: {
-      type: [loyaltyTierSchema],
-      default: () => DEFAULT_LOYALTY_TIERS.map((tier) => ({ ...tier })),
-    },
 
     /** تنبيهات الجرس في الشريط العلوي. */
     notifications: {

@@ -6,16 +6,11 @@ import { applyDiscount, round2 } from '../../core/utils/money.js';
  * دالة صافية: مبتلمسش داتابيز ولا وقت، فنفس المدخلات بتدي نفس النتيجة دايمًا،
  * وده اللي بيخلي الحسبة قابلة للاختبار ومتطابقة بين البيع والمرتجع وإعادة الحساب.
  *
- * ترتيب الحساب مهم: خصم السطر (يدوي أو عرض) الأول، بعدين خصم مستوى العميل،
- * بعدين خصم الفاتورة اليدوي على اللي فاضل، وآخر حاجة الضريبة.
+ * ترتيب الحساب مهم: خصم السطر (يدوي أو عرض) الأول، بعدين خصم الفاتورة اليدوي
+ * على اللي فاضل، وآخر حاجة الضريبة.
  * الضريبة بتتحسب على الأصناف الخاضعة بس، وخصومات الفاتورة بتتوزع عليها بالنسبة والتناسب.
  */
-export const calculateInvoice = ({
-  lines,
-  discount = null,
-  taxRate = 0,
-  tierDiscountPercent = 0,
-}) => {
+export const calculateInvoice = ({ lines, discount = null, taxRate = 0 }) => {
   const computedLines = lines.map((line) => {
     const gross = round2(line.unitPrice * line.quantity);
 
@@ -42,22 +37,9 @@ export const calculateInvoice = ({
   );
   const afterLineDiscounts = round2(subtotal - lineDiscountTotal);
 
-  // خصم المستوى قبل اليدوي، عشان نسبة الكاشير تتحسب على المبلغ بعد مزايا العميل.
-  const tierDiscount =
-    tierDiscountPercent > 0
-      ? applyDiscount(afterLineDiscounts, {
-          type: DISCOUNT_TYPES.PERCENTAGE,
-          value: tierDiscountPercent,
-        })
-      : 0;
-
-  const afterTierDiscount = round2(afterLineDiscounts - tierDiscount);
-
-  const manualDiscount = discount?.type
-    ? applyDiscount(afterTierDiscount, discount)
+  const invoiceDiscount = discount?.type
+    ? applyDiscount(afterLineDiscounts, discount)
     : 0;
-
-  const invoiceDiscount = round2(tierDiscount + manualDiscount);
 
   const netBeforeTax = round2(afterLineDiscounts - invoiceDiscount);
 
@@ -84,7 +66,6 @@ export const calculateInvoice = ({
     lines: taxedLines.map(({ gross, ...line }) => line),
     subtotal,
     lineDiscountTotal,
-    tierDiscount,
     invoiceDiscount,
     taxableBase,
     taxRate,

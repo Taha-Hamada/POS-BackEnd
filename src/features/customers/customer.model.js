@@ -1,22 +1,11 @@
 import mongoose from 'mongoose';
 
-import {
-  CUSTOMER_TIERS,
-  CUSTOMER_TIER_VALUES,
-} from '../../core/constants/index.js';
-
 const customerSchema = new mongoose.Schema(
   {
     name: { type: String, required: true, trim: true, maxlength: 150 },
     phone: { type: String, required: true, trim: true, maxlength: 30 },
     email: { type: String, trim: true, lowercase: true, default: null },
     address: { type: String, trim: true, default: '' },
-
-    tier: {
-      type: String,
-      enum: CUSTOMER_TIER_VALUES,
-      default: CUSTOMER_TIERS.REGULAR,
-    },
 
     /**
      * موجب = العميل دافع مقدم وليه رصيد عندنا.
@@ -27,8 +16,6 @@ const customerSchema = new mongoose.Schema(
 
     /** سقف الآجل المسموح — صفر معناه مفيش بيع آجل للعميل ده. */
     creditLimit: { type: Number, default: 0, min: 0 },
-
-    points: { type: Number, default: 0, min: 0 },
 
     /** إجماليات تراكمية بتتحدّث مع كل فاتورة عشان القوايم تفضل سريعة. */
     totalPurchases: { type: Number, default: 0, min: 0 },
@@ -47,7 +34,7 @@ const customerSchema = new mongoose.Schema(
 
 customerSchema.index({ phone: 1 }, { unique: true });
 customerSchema.index({ name: 'text' });
-customerSchema.index({ tier: 1, isActive: 1 });
+customerSchema.index({ isActive: 1 });
 customerSchema.index({ balance: 1 });
 
 customerSchema.virtual('isOverdue').get(function isOverdue() {

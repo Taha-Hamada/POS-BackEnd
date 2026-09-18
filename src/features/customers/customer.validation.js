@@ -6,7 +6,6 @@ import {
   objectId,
   paginationQuery,
 } from '../../core/base/commonSchemas.js';
-import { CUSTOMER_TIER_VALUES } from '../../core/constants/index.js';
 
 import { LEDGER_TYPE_VALUES } from './customerLedger.model.js';
 
@@ -22,7 +21,6 @@ const customerBody = z.object({
   phone,
   email: z.string().trim().email('البريد غير صالح').nullish(),
   address: z.string().trim().max(300).optional(),
-  tier: z.enum(CUSTOMER_TIER_VALUES).optional(),
   creditLimit: z.number().min(0).optional(),
   note: z.string().trim().max(500).optional(),
   isActive: z.boolean().optional(),
@@ -30,7 +28,6 @@ const customerBody = z.object({
 
 export const listCustomersSchema = {
   query: paginationQuery.extend({
-    tier: z.enum(CUSTOMER_TIER_VALUES).optional(),
     isActive: booleanQuery.optional(),
     hasDebt: booleanQuery.optional(),
   }),
@@ -79,18 +76,6 @@ export const ledgerSchema = {
     type: z.enum(LEDGER_TYPE_VALUES).optional(),
     from: z.coerce.date().optional(),
     to: z.coerce.date().optional(),
-  }),
-};
-
-export const loyaltySchema = {
-  params: idParam,
-  query: paginationQuery,
-};
-
-export const redeemSchema = {
-  params: idParam,
-  body: z.object({
-    points: z.number().int().positive('عدد النقط لازم يكون أكبر من صفر'),
   }),
 };
 
