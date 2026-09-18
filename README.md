@@ -142,3 +142,5 @@ src/
 
 المتغيرات اللي لازم تتغير قبل أي نشر: `JWT_ACCESS_SECRET` و `JWT_REFRESH_SECRET`
 و `CORS_ORIGINS` (خليها قايمة نطاقات محددة مش `*`).
+#   P O S - B a c k E n d  
+ 
