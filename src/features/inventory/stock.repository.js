@@ -18,7 +18,7 @@ class StockRepository extends BaseRepository {
   ensureRecord(productId, branchId, { minStock = null, session } = {}) {
     return this.model.findOneAndUpdate(
       { product: productId, branch: branchId },
-      { $setOnInsert: { quantity: 0, reserved: 0, minStock } },
+      { $setOnInsert: { quantity: 0, minStock } },
       { new: true, upsert: true, session, setDefaultsOnInsert: true },
     );
   }
@@ -38,26 +38,6 @@ class StockRepository extends BaseRepository {
     return this.model.findOneAndUpdate(
       filter,
       { $inc: { quantity: delta } },
-      { new: true, session },
-    );
-  }
-
-  reserve(productId, branchId, quantity, { session } = {}) {
-    return this.model.findOneAndUpdate(
-      {
-        product: productId,
-        branch: branchId,
-        $expr: { $gte: [{ $subtract: ['$quantity', '$reserved'] }, quantity] },
-      },
-      { $inc: { reserved: quantity } },
-      { new: true, session },
-    );
-  }
-
-  release(productId, branchId, quantity, { session } = {}) {
-    return this.model.findOneAndUpdate(
-      { product: productId, branch: branchId },
-      { $inc: { reserved: -quantity } },
       { new: true, session },
     );
   }
@@ -88,7 +68,6 @@ class StockRepository extends BaseRepository {
         $group: {
           _id: '$product',
           quantity: { $sum: '$quantity' },
-          reserved: { $sum: '$reserved' },
         },
       },
     ]);

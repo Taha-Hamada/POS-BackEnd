@@ -92,12 +92,20 @@ export const createReturn = async ({
     throw ApiError.badRequest('الفاتورة ملغاة، مفيش مرتجع عليها');
   }
 
-  if (invoice.status === INVOICE_STATUSES.HELD) {
-    throw ApiError.badRequest('الفاتورة لسه معلّقة');
-  }
-
   if (invoice.status === INVOICE_STATUSES.RETURNED) {
     throw ApiError.badRequest('الفاتورة اترجّعت بالكامل قبل كده');
+  }
+
+  // الشاشة كانت بتمنع الفاتورة القديمة، والسيرفر كان بيعدّيها.
+  const ageDays = Math.floor(
+    (Date.now() - invoice.createdAt.getTime()) / 86_400_000,
+  );
+
+  if (ageDays > RETURN_WINDOW_DAYS) {
+    throw ApiError.badRequest(
+      `الفاتورة عدّى عليها ${ageDays} يوم — مهلة الإرجاع ${RETURN_WINDOW_DAYS} يوم`,
+      { code: 'RETURN_WINDOW_EXPIRED' },
+    );
   }
 
   const lines = buildReturnLines(invoice, requestedLines);
@@ -116,6 +124,18 @@ export const createReturn = async ({
   if (refundMethod === PAYMENTS.CREDIT && !invoice.customer) {
     throw ApiError.badRequest('الرد على الحساب محتاج عميل مسجّل على الفاتورة');
   }
+
+  // الجزء اللي العميل ماكانش دفعه أصلًا (آجل الفاتورة) بيتسوّى على حسابه
+  // مهما كانت طريقة الرد المختارة — من غير كده كنا بنديله كاش وبنسيب
+  // الدين عليه، يعني خسارة مرتين.
+  const creditSettled =
+    invoice.creditAmount > 0 && invoice.total > 0
+      ? Math.min(total, round2(invoice.creditAmount * (total / invoice.total)))
+      : 0;
+
+  const payable = round2(total - creditSettled);
+  const cashRefund = refundMethod === PAYMENTS.CASH ? payable : 0;
+  const creditRefund = round2(creditSettled + (payable - cashRefund));
 
   const settings = await getSettings();
   const trackedIds = lines.map((line) => line.product);
@@ -144,6 +164,8 @@ export const createReturn = async ({
           total,
           costTotal,
           refundMethod,
+          cashRefund,
+          creditRefund,
           reason,
           note,
         },
@@ -193,11 +215,11 @@ export const createReturn = async ({
     if (invoice.customer) {
       // صنف سعره صفر بيطلع مرتجع بقيمة صفر، ومفيش فلوس ترجع للحساب،
       // فبنسجّل المرتجع من غير حركة بدل ما الحركة الصفرية ترفض العملية كلها.
-      if (refundMethod === PAYMENTS.CREDIT && total > 0) {
+      if (creditRefund > 0) {
         await customerService.applyBalanceChange(
           {
             customer: invoice.customer,
-            amount: total,
+            amount: creditRefund,
             type: LEDGER_TYPES.REFUND,
             referenceType: 'return',
             reference: saleReturn._id,
@@ -209,8 +231,14 @@ export const createReturn = async ({
         );
       }
 
+      // عدد فواتير العميل بينقص لما الفاتورة ترجع بالكامل بس؛ المرتجع
+      // الجزئي بيقلّل قيمة مشترياته من غير ما يلغي الزيارة نفسها.
       await customerService.reversePurchase(
-        { customer: invoice.customer, amount: total },
+        {
+          customer: invoice.customer,
+          amount: total,
+          dropOrder: fullyReturned,
+        },
         { session },
       );
     }
@@ -286,6 +314,12 @@ export const getReturnableLines = async (invoiceId) => {
       status: invoice.status,
       createdAt: invoice.createdAt,
       customer: invoice.customer,
+      // الشاشة بتحسب المعاينة بنفس خطوات [createReturn]، فمحتاجة أرقام
+      // تسعير الفاتورة مش الإجمالي بس.
+      subtotal: invoice.subtotal,
+      lineDiscountTotal: invoice.lineDiscountTotal,
+      invoiceDiscount: invoice.invoiceDiscount,
+      creditAmount: invoice.creditAmount,
     },
     ageDays,
     isWithinWindow: ageDays <= RETURN_WINDOW_DAYS,
@@ -302,6 +336,7 @@ export const getReturnableLines = async (invoiceId) => {
         remainingQuantity: round2(line.quantity - line.returnedQuantity),
         unitPrice: line.unitPrice,
         lineTotal: line.lineTotal,
+        taxAmount: line.taxAmount,
       }))
       .filter((line) => line.remainingQuantity > 0),
   };
@@ -351,9 +386,16 @@ export const summarizeByShift = async (shiftId) => {
         _id: null,
         returnsCount: { $sum: 1 },
         total: { $sum: '$total' },
+        // الجزء اللي خرج من الدرج فعلًا؛ المرتجعات القديمة من غير الحقل
+        // ده بتاخد إجماليها لو كانت كاش، زي ما كان بيتحسب قبل كده.
         cashRefunds: {
           $sum: {
-            $cond: [{ $eq: ['$refundMethod', PAYMENTS.CASH] }, '$total', 0],
+            $ifNull: [
+              '$cashRefund',
+              {
+                $cond: [{ $eq: ['$refundMethod', PAYMENTS.CASH] }, '$total', 0],
+              },
+            ],
           },
         },
       },

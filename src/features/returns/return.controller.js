@@ -4,14 +4,30 @@ import {
   sendSuccess,
 } from '../../core/http/apiResponse.js';
 import asyncHandler from '../../core/http/asyncHandler.js';
+import { getSettings } from '../settings/settings.service.js';
 import * as shiftService from '../shifts/shift.service.js';
 
 import * as returnService from './return.service.js';
 
+/**
+ * المرتجع بيترط بوردية اللي بينفذه، زي الفاتورة بالظبط: من غير كده رد الكاش
+ * مبينزلش من الدرج ووقت التقفيل الأرقام بتبان زيادة. والبيع كان مقفول على
+ * وردية مفتوحة والمرتجع لأ، فكان ينفع تصرف كاش والدرج مش حاسبه.
+ */
+const resolveShift = async (req) => {
+  if (req.body.shift) return req.body.shift;
+
+  const settings = await getSettings();
+  if (settings.requireOpenShift) {
+    const shift = await shiftService.requireOpenShift(req.user.id);
+    return shift._id;
+  }
+
+  return shiftService.getShiftIdFor(req.user.id);
+};
+
 export const create = asyncHandler(async (req, res) => {
-  // المرتجع بيترط بوردية اللي بينفذه، زي الفاتورة بالظبط:
-  // من غير كده رد الكاش مبينزلش من الدرج ووقت التقفيل الأرقام بتبان زيادة.
-  const shift = req.body.shift ?? (await shiftService.getShiftIdFor(req.user.id));
+  const shift = await resolveShift(req);
 
   const saleReturn = await returnService.createReturn({
     ...req.body,

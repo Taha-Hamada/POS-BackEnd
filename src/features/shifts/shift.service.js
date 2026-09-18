@@ -111,12 +111,26 @@ export const getShiftById = async (id) => {
 export const getShiftWithTotals = async (id) => {
   const shift = await getShiftById(id);
 
-  const totals =
-    shift.status === SHIFT_STATUSES.CLOSED
-      ? shift.closing
-      : await calculateShiftTotals(shift);
+  if (shift.status !== SHIFT_STATUSES.CLOSED) {
+    return { shift, totals: await calculateShiftTotals(shift) };
+  }
 
-  return { shift, totals };
+  const stored = shift.closing?.toObject?.() ?? shift.closing ?? {};
+
+  // الورديات اللي اتقفلت قبل ما نخزّن كل الأرقام بنكمّل ناقصها بالحساب من
+  // فواتيرها — أحسن من إننا نعرضها أصفار.
+  if (stored.cashSales !== null && stored.cashSales !== undefined) {
+    return { shift, totals: stored };
+  }
+
+  const recomputed = await calculateShiftTotals(shift);
+  const filled = { ...recomputed };
+
+  for (const [key, value] of Object.entries(stored)) {
+    if (value !== null && value !== undefined) filled[key] = value;
+  }
+
+  return { shift, totals: filled };
 };
 
 export const addCashMovement = async (
@@ -160,14 +174,12 @@ export const closeShift = async (id, { countedCash, note, userId }) => {
 
   shift.status = SHIFT_STATUSES.CLOSED;
   shift.closedAt = new Date();
+  // بنجمّد كل الأرقام مش بعضها: تقرير الوردية بيتقري من هنا بعد التقفيل،
+  // وأي حقل ناقص كان بيتعرض صفر في الشاشة وفي الـPDF.
   shift.closing = {
+    ...totals,
     countedCash,
-    expectedCash: totals.expectedCash,
     difference: round2(countedCash - totals.expectedCash),
-    salesTotal: totals.salesTotal,
-    invoicesCount: totals.invoicesCount,
-    returnsTotal: totals.returnsTotal,
-    byMethod: totals.byMethod,
     note: note ?? '',
     closedBy: userId,
   };
@@ -216,6 +228,10 @@ export const requireOpenShift = async (cashierId) => {
   return shift;
 };
 
+/** حالة وردية بعينها — الفواتير بتسأل عنها قبل الإلغاء. */
+export const getShiftForInvoice = (shiftId) =>
+  shiftRepository.findById(shiftId, { lean: true });
+
 export const getShiftIdFor = async (cashierId) => {
   const shift = await shiftRepository.findOne(
     { cashier: cashierId, status: SHIFT_STATUSES.OPEN },
@@ -238,5 +254,6 @@ export default {
   listShifts,
   requireOpenShift,
   getShiftIdFor,
+  getShiftForInvoice,
   calculateShiftTotals,
 };

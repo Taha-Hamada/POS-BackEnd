@@ -42,6 +42,8 @@ export const pay = asyncHandler(async (req, res) => {
   const supplier = await supplierService.payDue({
     supplier: req.params.id,
     amount: req.body.amount,
+    note: req.body.note,
+    userId: req.user.id,
   });
   sendSuccess(res, {
     message: `اتسجل سداد ${req.body.amount} للمورد`,

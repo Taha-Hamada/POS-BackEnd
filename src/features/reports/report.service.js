@@ -13,10 +13,8 @@ import * as returnService from '../returns/return.service.js';
 import { getSettings } from '../settings/settings.service.js';
 import supplierRepository from '../suppliers/supplier.repository.js';
 
-/** الفواتير اللي بتتحسب في التقارير: المعتمدة بس، من غير المعلّقة والملغاة. */
-const COUNTED_STATUSES = {
-  $nin: [INVOICE_STATUSES.HELD, INVOICE_STATUSES.VOIDED],
-};
+/** الفواتير اللي بتتحسب في التقارير: كل حاجة ما عدا الملغاة. */
+const COUNTED_STATUSES = { $ne: INVOICE_STATUSES.VOIDED };
 
 const periodMatch = ({ branch, from, to }) => {
   const match = { status: COUNTED_STATUSES };

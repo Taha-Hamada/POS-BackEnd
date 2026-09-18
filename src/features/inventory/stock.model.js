@@ -19,9 +19,6 @@ const stockSchema = new mongoose.Schema(
 
     quantity: { type: Number, required: true, default: 0 },
 
-    /** كمية محجوزة لفواتير معلقة — الرصيد المتاح = quantity − reserved. */
-    reserved: { type: Number, default: 0, min: 0 },
-
     /**
      * تجاوز حد الطلب لهذا الفرع بس.
      * null معناها الفرع ماشي على حد الطلب المسجل على المنتج نفسه.
@@ -39,10 +36,6 @@ const stockSchema = new mongoose.Schema(
 
 stockSchema.index({ product: 1, branch: 1 }, { unique: true });
 stockSchema.index({ branch: 1, quantity: 1 });
-
-stockSchema.virtual('available').get(function available() {
-  return this.quantity - this.reserved;
-});
 
 stockSchema.virtual('isOutOfStock').get(function isOutOfStock() {
   return this.quantity <= 0;

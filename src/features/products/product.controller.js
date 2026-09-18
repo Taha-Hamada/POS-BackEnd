@@ -53,14 +53,6 @@ export const update = asyncHandler(async (req, res) => {
   sendSuccess(res, { message: 'اتحدث المنتج', data: product });
 });
 
-export const bulkPrices = asyncHandler(async (req, res) => {
-  const result = await productService.bulkUpdatePrices(req.body);
-  sendSuccess(res, {
-    message: `اتعدل سعر ${result.modified} منتج`,
-    data: result,
-  });
-});
-
 export const setActiveState = asyncHandler(async (req, res) => {
   const product = await productService.setProductActiveState(
     req.params.id,
@@ -94,7 +86,6 @@ export default {
   byBarcode,
   create,
   update,
-  bulkPrices,
   setActiveState,
   uploadImage,
   removeImage,

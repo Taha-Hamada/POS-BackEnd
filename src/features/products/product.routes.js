@@ -11,7 +11,6 @@ import * as controller from './product.controller.js';
 import { productImageUpload } from './product.upload.js';
 import {
   barcodeSchema,
-  bulkPriceSchema,
   createProductSchema,
   expiringSchema,
   getProductSchema,
@@ -37,7 +36,6 @@ router.get('/', canView, validate(listProductsSchema), controller.list);
 router.get('/:id', canView, validate(getProductSchema), controller.getOne);
 
 router.post('/', canManage, validate(createProductSchema), controller.create);
-router.patch('/bulk-prices', canManage, validate(bulkPriceSchema), controller.bulkPrices);
 router.patch('/:id', canManage, validate(updateProductSchema), controller.update);
 router.patch(
   '/:id/active',

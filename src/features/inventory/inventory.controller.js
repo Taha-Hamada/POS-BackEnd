@@ -82,6 +82,11 @@ export const setMinStock = asyncHandler(async (req, res) => {
   sendSuccess(res, { message: 'اتحدد حد الطلب', data: record });
 });
 
+export const productStock = asyncHandler(async (req, res) => {
+  const items = await inventoryService.getProductStockByBranch(req.params.id);
+  sendSuccess(res, { data: items });
+});
+
 export const lowStock = asyncHandler(async (req, res) => {
   const items = await inventoryService.getLowStockAlerts({
     ...req.query,
@@ -99,5 +104,6 @@ export default {
   stocktake,
   transfer,
   setMinStock,
+  productStock,
   lowStock,
 };

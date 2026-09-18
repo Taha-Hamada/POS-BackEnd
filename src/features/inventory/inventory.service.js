@@ -176,7 +176,6 @@ export const getStockForBranch = async ({
         effectiveMinStock: {
           $ifNull: ['$minStock', { $ifNull: ['$product.minStock', 0] }],
         },
-        available: { $subtract: ['$quantity', '$reserved'] },
       },
     },
   ];
@@ -322,8 +321,6 @@ const SORTS = {
   default: { updatedAt: -1 },
   quantity: { quantity: 1 },
   '-quantity': { quantity: -1 },
-  available: { available: 1 },
-  '-available': { available: -1 },
   name: { 'product.name': 1 },
   '-name': { 'product.name': -1 },
 };
@@ -465,6 +462,56 @@ export const setMinStock = async ({ product, branch, minStock }) => {
   return record;
 };
 
+/**
+ * رصيد منتج واحد موزّع على الفروع — بتغذي تبويب الأرصدة في تفاصيل المنتج.
+ *
+ * بترجّع الفروع اللي ليها سجل رصيد بس؛ الفرع اللي المنتج معدّاش عليه أصلًا
+ * مالوش سجل، وعرضه بصفر كان هيوهم إن فيه رصيد اتحرّك وخلص.
+ */
+export const getProductStockByBranch = async (productId) =>
+  stockRepository.aggregate([
+    { $match: { product: toObjectId(productId) } },
+    {
+      $lookup: {
+        from: 'branches',
+        localField: 'branch',
+        foreignField: '_id',
+        as: 'branch',
+      },
+    },
+    { $unwind: '$branch' },
+    {
+      $lookup: {
+        from: 'products',
+        localField: 'product',
+        foreignField: '_id',
+        as: 'productDoc',
+      },
+    },
+    { $unwind: '$productDoc' },
+    {
+      // نفس حسبة حد الطلب الفعلي في باقي الشاشات: تجاوز الفرع وإلا حد المنتج.
+      $addFields: {
+        effectiveMinStock: {
+          $ifNull: ['$minStock', { $ifNull: ['$productDoc.minStock', 0] }],
+        },
+      },
+    },
+    { $sort: { 'branch.name': 1 } },
+    {
+      $project: {
+        quantity: 1,
+        minStock: 1,
+        effectiveMinStock: 1,
+        lastCountedAt: 1,
+        updatedAt: 1,
+        'branch._id': 1,
+        'branch.name': 1,
+        'branch.code': 1,
+      },
+    },
+  ]);
+
 /** أصناف تحت حد الطلب — بتغذي تنبيهات الداشبورد. */
 export const getLowStockAlerts = async ({ branch, limit = 50 }) => {
   // التجميع مبيحوّلش النصوص لـ ObjectId زي الاستعلام العادي، فبنحوّل بنفسنا.
@@ -531,5 +578,6 @@ export default {
   stocktake,
   transferStock,
   setMinStock,
+  getProductStockByBranch,
   getLowStockAlerts,
 };

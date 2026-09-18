@@ -6,6 +6,9 @@ import { round2 } from '../../core/utils/money.js';
 // كان هيعمل حلقة استيراد.
 import PurchaseOrder from '../purchases/purchaseOrder.model.js';
 
+import { getSettings } from '../settings/settings.service.js';
+import * as shiftService from '../shifts/shift.service.js';
+
 import supplierRepository from './supplier.repository.js';
 
 const buildFilter = ({ search, isActive, hasDue }) => {
@@ -92,7 +95,13 @@ export const addDue = async ({ supplier: supplierId, amount }, { session } = {})
   return supplier;
 };
 
-export const payDue = async ({ supplier: supplierId, amount }) => {
+/**
+ * سداد للمورد.
+ *
+ * الفلوس بتطلع من درج الوردية، فبنسجّلها كحركة سحب عليها. من غير كده كان
+ * المستحق بينقص والدرج مش عارف، والكاشير بيلاقي عجز وقت التقفيل.
+ */
+export const payDue = async ({ supplier: supplierId, amount, userId, note }) => {
   if (amount <= 0) throw ApiError.badRequest('مبلغ السداد لازم يكون موجب');
 
   const supplier = await supplierRepository.findById(supplierId, { lean: true });
@@ -102,13 +111,33 @@ export const payDue = async ({ supplier: supplierId, amount }) => {
     throw ApiError.badRequest('مفيش مستحقات على المورد ده');
   }
 
-  if (amount > supplier.balanceDue) {
-    throw ApiError.badRequest(`المبلغ أكبر من المستحق (${supplier.balanceDue})`, {
+  const due = round2(supplier.balanceDue);
+  const paid = round2(amount);
+
+  if (paid > due) {
+    throw ApiError.badRequest(`المبلغ أكبر من المستحق (${due})`, {
       code: 'OVERPAYMENT',
     });
   }
 
-  return supplierRepository.applyDueDelta(supplierId, -round2(amount));
+  // بنسجّل خروج الكاش الأول: لو الدرج مش كفاية العملية بتقف من غير ما
+  // المستحق يتغيّر. والوردية مفروضة زي البيع والمرتجع بالظبط، وإلا الفلوس
+  // بتخرج ومحدش حاسبها.
+  const settings = await getSettings();
+  const shift = settings.requireOpenShift
+    ? (await shiftService.requireOpenShift(userId))._id
+    : await shiftService.getShiftIdFor(userId);
+
+  if (shift) {
+    await shiftService.addCashMovement(shift, {
+      direction: 'out',
+      amount: paid,
+      reason: note?.trim() || `سداد للمورد ${supplier.name}`,
+      userId,
+    });
+  }
+
+  return supplierRepository.applyDueDelta(supplierId, -paid);
 };
 
 export const getPayablesSummary = () => supplierRepository.totalPayables();

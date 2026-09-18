@@ -1,6 +1,7 @@
 import {
   INVOICE_STATUSES,
   PAYMENT_METHODS,
+  SHIFT_STATUSES,
   STOCK_MOVEMENT_REASONS,
 } from '../../core/constants/index.js';
 import withTransaction from '../../core/db/transaction.js';
@@ -13,7 +14,6 @@ import {
   applyStockMovement,
   assertStockAvailable,
 } from '../inventory/inventory.service.js';
-import stockRepository from '../inventory/stock.repository.js';
 import Product from '../products/product.model.js';
 import {
   applyPromotions,
@@ -21,6 +21,7 @@ import {
 } from '../promotions/promotion.pricing.js';
 import promotionRepository from '../promotions/promotion.repository.js';
 import { getSettings } from '../settings/settings.service.js';
+import * as shiftService from '../shifts/shift.service.js';
 
 import invoiceRepository from './invoice.repository.js';
 import { calculateInvoice, settlePayments } from './invoice.pricing.js';
@@ -120,19 +121,19 @@ const assertPaymentsCover = ({ total, payments, settings, customer }) => {
     });
   }
 
-  if (settlement.creditAmount > 0) {
-    if (settings.requireCustomerForCredit && !customer) {
-      throw ApiError.badRequest('البيع الآجل لازم يكون على عميل مسجّل', {
-        code: 'CREDIT_NEEDS_CUSTOMER',
-      });
-    }
+  // الفيزا والمحفظة والآجل بتتسجّل بالمبلغ بالظبط، فالزيادة فيهم غلط إدخال
+  // مش باقي — من غير الفحص ده الكاشير كان يقدر يطلّع فكّة من فاتورة فيزا.
+  if (settlement.overpaidNonCash > 0) {
+    throw ApiError.badRequest(
+      `المدفوع بغير الكاش أكبر من المطلوب بـ ${settlement.overpaidNonCash}`,
+      { code: 'NON_CASH_OVERPAY', details: [{ total, covered: settlement.covered }] },
+    );
+  }
 
-    // الباقي مبيرجعش كاش لو جزء من الفاتورة آجل — ده بيخبّي خطأ في إدخال المبالغ.
-    if (settlement.changeDue > 0) {
-      throw ApiError.badRequest('مينفعش يكون فيه باقي مع دفع آجل', {
-        code: 'CHANGE_WITH_CREDIT',
-      });
-    }
+  if (settlement.creditAmount > 0 && settings.requireCustomerForCredit && !customer) {
+    throw ApiError.badRequest('البيع الآجل لازم يكون على عميل مسجّل', {
+      code: 'CREDIT_NEEDS_CUSTOMER',
+    });
   }
 
   return settlement;
@@ -168,10 +169,6 @@ export const createInvoice = async ({
 
   if (!settings.allowNegativeStock && stockLines.length > 0) {
     await assertStockAvailable(stockLines, branch);
-  }
-
-  if (settlement.creditAmount > 0 && customer) {
-    await customerService.assertCreditAllowed(customer, settlement.creditAmount);
   }
 
   return withTransaction(async (session) => {
@@ -248,137 +245,6 @@ export const createInvoice = async ({
   });
 };
 
-/**
- * فاتورة معلّقة — الكاشير بيسيبها ويرجع لها.
- * بنحجز الرصيد عشان الفاتورة المعلّقة ماتخليش حاجة تتباع مرتين.
- */
-export const holdInvoice = async ({
-  branch,
-  cashier,
-  shift = null,
-  customer = null,
-  lines: requestedLines,
-  discount = null,
-  label = '',
-  note = '',
-}) => {
-  const pricing = await priceSale({ requestedLines, discount, customer });
-  const { settings, resolved } = pricing;
-
-  const stockLines = linesNeedingStock(resolved);
-
-  return withTransaction(async (session) => {
-    const [invoice] = await invoiceRepository.model.create(
-      [
-        {
-          branch,
-          cashier,
-          shift,
-          customer,
-          status: INVOICE_STATUSES.HELD,
-          ...pricingFields({ ...pricing, discount }),
-          label: label || 'فاتورة معلّقة',
-          note,
-        },
-      ],
-      { session },
-    );
-
-    for (const line of stockLines) {
-      const reserved = await stockRepository.reserve(
-        line.product,
-        branch,
-        line.quantity,
-        { session },
-      );
-
-      if (!reserved && !settings.allowNegativeStock) {
-        throw ApiError.conflict(`الرصيد مش كافي لـ ${line.name}`, {
-          code: 'INSUFFICIENT_STOCK',
-        });
-      }
-    }
-
-    return invoice;
-  });
-};
-
-const releaseHeldReservations = async (invoice, { session } = {}) => {
-  const productIds = invoice.lines.map((line) => line.product);
-  const products = await Product.find({ _id: { $in: productIds } })
-    .select('trackStock')
-    .lean();
-  const tracked = new Set(
-    products.filter((item) => item.trackStock).map((item) => String(item._id)),
-  );
-
-  for (const line of invoice.lines) {
-    if (!tracked.has(String(line.product))) continue;
-
-    await stockRepository.release(line.product, invoice.branch, line.quantity, {
-      session,
-    });
-  }
-};
-
-/** إلغاء فاتورة معلّقة — بيفكّ الحجز وبيمسحها لأنها لسه مش حركة مالية. */
-export const discardHeldInvoice = async (id) => {
-  const invoice = await invoiceRepository.findById(id);
-  if (!invoice) throw ApiError.notFound('الفاتورة غير موجودة');
-
-  if (invoice.status !== INVOICE_STATUSES.HELD) {
-    throw ApiError.badRequest('الفاتورة دي مش معلّقة');
-  }
-
-  return withTransaction(async (session) => {
-    await releaseHeldReservations(invoice, { session });
-    await invoiceRepository.deleteById(id, { session });
-    return { id, discarded: true };
-  });
-};
-
-/**
- * إتمام فاتورة معلّقة.
- * بنفكّ الحجز الأول وبعدين نعيد الاعتماد من أول وجديد، عشان الأسعار والضريبة
- * تتحسب بنفس المسار اللي أي فاتورة عادية بتمشي فيه.
- */
-export const checkoutHeldInvoice = async (id, { payments, discount, customer }) => {
-  const invoice = await invoiceRepository.findById(id);
-  if (!invoice) throw ApiError.notFound('الفاتورة غير موجودة');
-
-  if (invoice.status !== INVOICE_STATUSES.HELD) {
-    throw ApiError.badRequest('الفاتورة دي مش معلّقة');
-  }
-
-  await withTransaction(async (session) => {
-    await releaseHeldReservations(invoice, { session });
-    await invoiceRepository.deleteById(id, { session });
-  });
-
-  return createInvoice({
-    branch: invoice.branch,
-    cashier: invoice.cashier,
-    shift: invoice.shift,
-    customer: customer ?? invoice.customer,
-    // خصم العرض مش خصم يدوي: بيتحسب من جديد وقت الاعتماد، عشان العرض
-    // اللي خلص وقت ما الفاتورة كانت معلّقة مايتطبقش.
-    lines: invoice.lines.map((line) => ({
-      product: line.product,
-      quantity: line.quantity,
-      discountType: line.promotion ? null : line.discountType,
-      discountValue: line.promotion ? 0 : line.discountValue,
-    })),
-    discount:
-      discount ??
-      (invoice.discountType
-        ? { type: invoice.discountType, value: invoice.discountValue }
-        : null),
-    payments,
-    label: invoice.label,
-    note: invoice.note,
-  });
-};
-
 const buildFilter = ({
   branch,
   cashier,
@@ -399,7 +265,6 @@ const buildFilter = ({
   if (customer) filter.customer = customer;
   if (shift) filter.shift = shift;
   if (status) filter.status = status;
-  else filter.status = { $ne: INVOICE_STATUSES.HELD };
 
   if (paymentMethod) filter['payments.method'] = paymentMethod;
   if (search) filter.number = toSearchRegex(search);
@@ -428,16 +293,6 @@ export const listInvoices = ({ page, limit, sort, ...filters }) =>
     select: '-lines',
   });
 
-export const listHeldInvoices = ({ branch, cashier }) =>
-  invoiceRepository.find(
-    {
-      status: INVOICE_STATUSES.HELD,
-      ...(branch ? { branch } : {}),
-      ...(cashier ? { cashier } : {}),
-    },
-    { sort: '-createdAt', populate: { path: 'customer', select: 'name phone' } },
-  );
-
 export const getInvoiceById = async (id) => {
   const invoice = await invoiceRepository.findById(id, {
     populate: invoiceRepository.detailPopulate(),
@@ -454,6 +309,19 @@ export const getInvoiceByNumber = async (number) => {
   return invoice;
 };
 
+/** بيرفض إلغاء فاتورة وردیتها اتقفلت — التقفيل جمّد أرقامها. */
+const assertShiftStillOpen = async (shiftId) => {
+  if (!shiftId) return;
+
+  const shift = await shiftService.getShiftForInvoice(shiftId);
+  if (!shift || shift.status === SHIFT_STATUSES.OPEN) return;
+
+  throw ApiError.badRequest(
+    'الفاتورة من وردية مقفولة — سجّل مرتجع بدل الإلغاء',
+    { code: 'SHIFT_CLOSED' },
+  );
+};
+
 /**
  * إلغاء فاتورة معتمدة.
  * بنرجّع المخزون ونعكس الآجل والنقط، وبنسيب الفاتورة نفسها بحالة ملغاة
@@ -467,15 +335,16 @@ export const voidInvoice = async (id, { reason, userId }) => {
     throw ApiError.badRequest('الفاتورة ملغاة بالفعل');
   }
 
-  if (invoice.status === INVOICE_STATUSES.HELD) {
-    throw ApiError.badRequest('الفاتورة المعلّقة تتلغى من مسار المعلّقات');
-  }
-
   if (invoice.returnedTotal > 0) {
     throw ApiError.badRequest('الفاتورة عليها مرتجعات، مينفعش تتلغى', {
       code: 'HAS_RETURNS',
     });
   }
+
+  // الإلغاء بيشيل الفاتورة من أرقام ورديتها، فلو الوردية اتقفلت الكاش
+  // بيخرج من الدرج الحالي ومحدش بيحسبه. المرتجع هو الأداة الصح بعد
+  // التقفيل: بيتسجّل على الوردية المفتوحة وبينزل من درجها.
+  await assertShiftStillOpen(invoice.shift);
 
   const productIds = invoice.lines.map((line) => line.product);
   const products = await Product.find({ _id: { $in: productIds } })
@@ -539,7 +408,7 @@ export const voidInvoice = async (id, { reason, userId }) => {
 };
 
 export const buildSummaryMatch = ({ branch, cashier, shift, from, to }) => {
-  const match = { status: { $nin: [INVOICE_STATUSES.HELD, INVOICE_STATUSES.VOIDED] } };
+  const match = { status: { $ne: INVOICE_STATUSES.VOIDED } };
 
   if (branch) match.branch = toObjectId(branch);
   if (cashier) match.cashier = toObjectId(cashier);
@@ -564,11 +433,7 @@ export const PAYMENT = PAYMENT_METHODS;
 
 export default {
   createInvoice,
-  holdInvoice,
-  discardHeldInvoice,
-  checkoutHeldInvoice,
   listInvoices,
-  listHeldInvoices,
   getInvoiceById,
   getInvoiceByNumber,
   voidInvoice,

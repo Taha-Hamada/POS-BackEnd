@@ -46,17 +46,6 @@ export const createInvoiceSchema = {
   }),
 };
 
-export const holdInvoiceSchema = { body: saleBase };
-
-export const checkoutHeldSchema = {
-  params: idParam,
-  body: z.object({
-    payments: z.array(payment).min(1).max(6),
-    discount: discount.nullish(),
-    customer: objectId.nullish(),
-  }),
-};
-
 export const listInvoicesSchema = {
   query: paginationQuery.extend({
     branch: objectId.optional(),
@@ -69,13 +58,6 @@ export const listInvoicesSchema = {
     to: z.coerce.date().optional(),
     minTotal: z.coerce.number().min(0).optional(),
     maxTotal: z.coerce.number().min(0).optional(),
-  }),
-};
-
-export const listHeldSchema = {
-  query: z.object({
-    branch: objectId.optional(),
-    cashier: objectId.optional(),
   }),
 };
 
@@ -102,10 +84,7 @@ export const summarySchema = {
 
 export default {
   createInvoiceSchema,
-  holdInvoiceSchema,
-  checkoutHeldSchema,
   listInvoicesSchema,
-  listHeldSchema,
   getInvoiceSchema,
   numberLookupSchema,
   voidInvoiceSchema,

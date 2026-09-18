@@ -122,30 +122,6 @@ export const applyBalanceChange = async (
   return { customer, entry };
 };
 
-/** بيتأكد إن سقف الآجل يستحمل الفاتورة قبل ما نعتمدها. */
-export const assertCreditAllowed = async (customerId, amount, { session } = {}) => {
-  const customer = await customerRepository.findById(customerId, { session });
-  if (!customer) throw ApiError.badRequest('العميل غير موجود');
-  if (!customer.isActive) throw ApiError.badRequest('العميل معطّل');
-
-  const projected = customer.balance - amount;
-
-  if (projected < -customer.creditLimit) {
-    throw ApiError.badRequest('المبلغ بيتعدى سقف الآجل المسموح للعميل', {
-      code: 'CREDIT_LIMIT_EXCEEDED',
-      details: [
-        {
-          creditLimit: customer.creditLimit,
-          currentBalance: customer.balance,
-          requested: amount,
-        },
-      ],
-    });
-  }
-
-  return customer;
-};
-
 /** سداد من العميل — بيرفع رصيده ناحية الصفر. */
 export const recordPayment = async ({
   customer: customerId,
@@ -226,11 +202,19 @@ export const registerPurchase = (
   { session } = {},
 ) => customerRepository.recordPurchase(customerId, amount, { session });
 
-/** بيعكس إجماليات الشراء بعد إلغاء فاتورة. */
+/**
+ * بيعكس إجماليات الشراء بعد إلغاء فاتورة أو مرتجع.
+ * [dropOrder] بينقّص عدد الفواتير كمان — بيتبعت من الإلغاء ومن المرتجع
+ * الكامل بس، عشان المرتجع الجزئي ما ينقّصش العدّاد مع كل صنف بيترجع.
+ */
 export const reversePurchase = (
-  { customer: customerId, amount },
+  { customer: customerId, amount, dropOrder = true },
   { session } = {},
-) => customerRepository.reversePurchase(customerId, amount, { session });
+) =>
+  customerRepository.reversePurchase(customerId, amount, {
+    session,
+    dropOrder,
+  });
 
 export const getReceivablesSummary = () => customerRepository.totalReceivables();
 
@@ -242,7 +226,6 @@ export default {
   updateCustomer,
   setCustomerActiveState,
   applyBalanceChange,
-  assertCreditAllowed,
   recordPayment,
   adjustBalance,
   getLedger,

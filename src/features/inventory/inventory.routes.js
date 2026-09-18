@@ -14,6 +14,7 @@ import {
   listStockSchema,
   lowStockSchema,
   minStockSchema,
+  productStockSchema,
   stocktakeSchema,
   transferSchema,
 } from './inventory.validation.js';
@@ -30,6 +31,12 @@ router.get('/stock', canView, validate(listStockSchema), controller.listStock);
 router.get('/summary', canView, validate(lowStockSchema), controller.summary);
 router.get('/movements', canView, validate(listMovementsSchema), controller.listMovements);
 router.get('/low-stock', canView, validate(lowStockSchema), controller.lowStock);
+router.get(
+  '/product/:id',
+  canView,
+  validate(productStockSchema),
+  controller.productStock,
+);
 
 router.post('/adjust', canAdjust, validate(adjustSchema), controller.adjust);
 router.post('/stocktake', canAdjust, validate(stocktakeSchema), controller.stocktake);

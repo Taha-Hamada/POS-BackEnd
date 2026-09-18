@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { objectId, paginationQuery } from '../../core/base/commonSchemas.js';
+import { idParam, objectId, paginationQuery } from '../../core/base/commonSchemas.js';
 import { STOCK_MOVEMENT_REASON_VALUES } from '../../core/constants/index.js';
 
 export const listStockSchema = {
@@ -26,7 +26,8 @@ export const adjustSchema = {
     product: objectId,
     branch: objectId.optional(),
     // الفرق مش الرصيد النهائي: موجب بيزود وسالب بينقص.
-    quantity: z.number().int().refine((value) => value !== 0, 'الكمية مينفعش تكون صفر'),
+    // الكسور مسموحة للأصناف اللي بتتباع بالكيلو أو اللتر.
+    quantity: z.number().refine((value) => value !== 0, 'الكمية مينفعش تكون صفر'),
     note: z.string().trim().max(300).optional(),
   }),
 };
@@ -35,7 +36,7 @@ export const stocktakeSchema = {
   body: z.object({
     product: objectId,
     branch: objectId.optional(),
-    countedQuantity: z.number().int().min(0),
+    countedQuantity: z.number().min(0),
     note: z.string().trim().max(300).optional(),
   }),
 };
@@ -45,7 +46,7 @@ export const transferSchema = {
     product: objectId,
     fromBranch: objectId,
     toBranch: objectId,
-    quantity: z.number().int().positive('الكمية لازم تكون أكبر من صفر'),
+    quantity: z.number().positive('الكمية لازم تكون أكبر من صفر'),
     note: z.string().trim().max(300).optional(),
   }),
 };
@@ -56,6 +57,10 @@ export const minStockSchema = {
     branch: objectId.optional(),
     minStock: z.number().int().min(0),
   }),
+};
+
+export const productStockSchema = {
+  params: idParam,
 };
 
 export const lowStockSchema = {
@@ -72,5 +77,6 @@ export default {
   stocktakeSchema,
   transferSchema,
   minStockSchema,
+  productStockSchema,
   lowStockSchema,
 };

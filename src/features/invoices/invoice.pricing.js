@@ -103,26 +103,42 @@ const distributeTax = (lines, taxAmount, taxableAfterLine) => {
 
 /**
  * بيوزّع المدفوع على الإجمالي.
- * الفرق الموجب بيبقى باقي للعميل لو فيه كاش، ودين عليه لو الدفع آجل.
+ *
+ * الباقي بيطلع من درج الكاش بس: الفيزا والمحفظة بتتخصم بالمبلغ اللي اتكتب
+ * بالظبط، فأي زيادة فيهم مش «باقي للعميل» — دي غلطة إدخال، وبترجع
+ * في [overpaidNonCash] عشان اللي بينده يرفض الفاتورة.
  */
 export const settlePayments = ({ total, payments = [] }) => {
-  const paidAmount = round2(
-    payments
-      .filter((payment) => payment.method !== 'credit')
-      .reduce((sum, payment) => sum + payment.amount, 0),
+  const sumOf = (predicate) =>
+    round2(
+      payments.filter(predicate).reduce((sum, payment) => sum + payment.amount, 0),
+    );
+
+  const cashAmount = sumOf((payment) => payment.method === 'cash');
+  const creditAmount = sumOf((payment) => payment.method === 'credit');
+  const otherAmount = sumOf(
+    (payment) => payment.method !== 'cash' && payment.method !== 'credit',
   );
 
-  const creditAmount = round2(
-    payments
-      .filter((payment) => payment.method === 'credit')
-      .reduce((sum, payment) => sum + payment.amount, 0),
-  );
-
+  const paidAmount = round2(cashAmount + otherAmount);
   const covered = round2(paidAmount + creditAmount);
-  const changeDue = round2(Math.max(0, covered - total));
+
+  // اللي مش كاش لازم مايزيدش عن الإجمالي — مفيش منه فكّة.
+  const nonCash = round2(otherAmount + creditAmount);
+  const overpaidNonCash = round2(Math.max(0, nonCash - total));
+
+  const changeDue = round2(Math.max(0, covered - total - overpaidNonCash));
   const shortfall = round2(Math.max(0, total - covered));
 
-  return { paidAmount, creditAmount, covered, changeDue, shortfall };
+  return {
+    cashAmount,
+    paidAmount,
+    creditAmount,
+    covered,
+    changeDue,
+    shortfall,
+    overpaidNonCash,
+  };
 };
 
 export const DISCOUNT = DISCOUNT_TYPES;

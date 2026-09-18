@@ -57,6 +57,16 @@ const shiftSchema = new mongoose.Schema(
       invoicesCount: { type: Number, default: null },
       returnsTotal: { type: Number, default: null },
       byMethod: { type: mongoose.Schema.Types.Mixed, default: null },
+
+      // الأرقام دي كانت ناقصة، فتقرير أي وردية مقفولة كان بيطلع فيها أصفار.
+      cashSales: { type: Number, default: null },
+      cashIn: { type: Number, default: null },
+      cashOut: { type: Number, default: null },
+      cashRefunds: { type: Number, default: null },
+      cashExpenses: { type: Number, default: null },
+      profit: { type: Number, default: null },
+      taxTotal: { type: Number, default: null },
+      discountTotal: { type: Number, default: null },
       note: { type: String, trim: true, default: '' },
       closedBy: {
         type: mongoose.Schema.Types.ObjectId,

@@ -21,7 +21,6 @@ const customerBody = z.object({
   phone,
   email: z.string().trim().email('البريد غير صالح').nullish(),
   address: z.string().trim().max(300).optional(),
-  creditLimit: z.number().min(0).optional(),
   note: z.string().trim().max(500).optional(),
   isActive: z.boolean().optional(),
 });

@@ -88,20 +88,6 @@ export const updateProductSchema = {
   ),
 };
 
-export const bulkPriceSchema = {
-  body: z
-    .object({
-      productIds: z.array(objectId).min(1).max(500).optional(),
-      category: objectId.optional(),
-      mode: z.enum(['percentage', 'fixed']),
-      value: z.number(),
-    })
-    .refine(
-      (value) => Boolean(value.productIds?.length) || Boolean(value.category),
-      'حدد منتجات أو قسم للتعديل',
-    ),
-};
-
 export const setActiveStateSchema = {
   params: idParam,
   body: z.object({ isActive: z.boolean() }),
@@ -118,7 +104,6 @@ export default {
   barcodeSchema,
   createProductSchema,
   updateProductSchema,
-  bulkPriceSchema,
   setActiveStateSchema,
   expiringSchema,
 };

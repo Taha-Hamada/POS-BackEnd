@@ -69,14 +69,23 @@ const returnSchema = new mongoose.Schema(
     costTotal: { type: Number, default: 0, min: 0 },
 
     /**
-     * طريقة رد الفلوس. لو credit فالمبلغ بيتخصم من مديونية العميل
-     * بدل ما يتصرف كاش من الدرج.
+     * طريقة رد الباقي بعد تسوية الجزء الآجل. لو credit فالمبلغ بيتحط
+     * على حساب العميل بدل ما يتصرف كاش من الدرج.
      */
     refundMethod: {
       type: String,
       enum: PAYMENT_METHOD_VALUES,
       required: true,
     },
+
+    /**
+     * المبلغ اللي خرج كاش من الدرج فعلًا — ده اللي بيتخصم من الكاش المتوقع
+     * وقت التقفيل، مش [total].
+     */
+    cashRefund: { type: Number, default: 0, min: 0 },
+
+    /** المبلغ اللي اتسوّى على حساب العميل (آجل الفاتورة + الرد على الحساب). */
+    creditRefund: { type: Number, default: 0, min: 0 },
 
     reason: { type: String, trim: true, default: '' },
     note: { type: String, trim: true, default: '' },

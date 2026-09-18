@@ -9,10 +9,8 @@ import branchRepository from './branch.repository.js';
 
 const POPULATE_MANAGER = { path: 'manager', select: 'name phone role' };
 
-/** نفس فواتير التقارير: المعتمدة بس، من غير المعلّقة والملغاة. */
-const COUNTED_STATUSES = {
-  $nin: [INVOICE_STATUSES.HELD, INVOICE_STATUSES.VOIDED],
-};
+/** نفس فواتير التقارير: كل حاجة ما عدا الملغاة. */
+const COUNTED_STATUSES = { $ne: INVOICE_STATUSES.VOIDED };
 
 /** المسؤول لازم يكون حساب شغال، وإلا الفرع يبان ليه مدير مش موجود. */
 const assertManagerExists = async (managerId) => {

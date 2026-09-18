@@ -199,6 +199,11 @@ export const receiveOrder = async (
     receipts.reduce((sum, receipt) => sum + receipt.quantity * receipt.unitCost, 0),
   );
 
+  // بنقرا الأرصدة قبل ما نضيف حاجة، عشان المتوسط يتحسب على الرصيد القديم.
+  const beforeQuantities = await stockTotalsBefore(
+    receipts.map((receipt) => receipt.line.product),
+  );
+
   return withTransaction(async (session) => {
     for (const receipt of receipts) {
       await applyStockMovement(
@@ -217,7 +222,14 @@ export const receiveOrder = async (
       );
 
       if (updateCost) {
-        await updateWeightedCost(receipt, order.branch, { session });
+        const pid = String(receipt.line.product);
+        const before = beforeQuantities.get(pid) ?? 0;
+
+        await updateWeightedCost(receipt, before, { session });
+
+        // نفس الصنف ممكن يتكرر في الأمر، فالشحنة اللي بعدها بتحسب على
+        // الرصيد بعد اللي قبلها.
+        beforeQuantities.set(pid, before + receipt.quantity);
       }
 
       receipt.line.receivedQuantity = round2(
@@ -236,15 +248,21 @@ export const receiveOrder = async (
 
     await order.save({ session });
 
+    // الشحن بيتحمّل مرة واحدة مع آخر استلام، مش مع كل شحنة جزئية.
+    // من غيره كان إجمالي الأمر يقول 250 وحساب المورد ياخد 50 بس.
+    const shipping = fullyReceived ? round2(order.shippingCost ?? 0) : 0;
+
     await supplierService.addDue(
-      { supplier: order.supplier, amount: receivedValue },
+      { supplier: order.supplier, amount: round2(receivedValue + shipping) },
       { session },
     );
 
     if (fullyReceived) {
-      await supplierRepository.recordPurchase(order.supplier, order.receivedValue, {
-        session,
-      });
+      await supplierRepository.recordPurchase(
+        order.supplier,
+        round2(order.receivedValue + shipping),
+        { session },
+      );
     }
 
     return order.populate(POPULATE);
@@ -255,23 +273,38 @@ export const receiveOrder = async (
  * متوسط مرجح للتكلفة: (الرصيد القديم × التكلفة القديمة + الكمية الجديدة × سعرها) ÷ الإجمالي.
  * من غير كده أول استلام بسعر مختلف بيقلب هامش الربح على كل الرصيد القديم.
  */
-const updateWeightedCost = async (receipt, branchId, { session } = {}) => {
+/**
+ * أرصدة المنتجات على كل الفروع قبل الاستلام.
+ *
+ * التكلفة حقل على المنتج نفسه مش على الفرع، فالمتوسط لازم يتحسب على الرصيد
+ * كله. لما كان بيتحسب على رصيد الفرع المستلِم بس، استلام 5 قطع في فرع فاضي
+ * كان بيرمي تكلفة المنتج كلها على سعر الشحنة دي ويتجاهل مية قطعة في فرع تاني.
+ */
+const stockTotalsBefore = async (productIds) => {
+  const totals = await stockRepository.totalsByProduct(
+    productIds.map((id) => toObjectId(id)),
+  );
+
+  return new Map(
+    productIds.map((id) => [
+      String(id),
+      totals.get(String(id))?.quantity ?? 0,
+    ]),
+  );
+};
+
+/** متوسط مرجح على الرصيد كله: (القديم × تكلفته + الجديد × سعره) ÷ الإجمالي. */
+const updateWeightedCost = async (receipt, previousQuantity, { session } = {}) => {
   const product = await Product.findById(receipt.line.product).session(session ?? null);
   if (!product) return;
 
-  const stock = await stockRepository.findForProduct(product._id, branchId, {
-    session,
-  });
-
-  // الرصيد بعد الاستلام ناقص الكمية الجديدة = الرصيد اللي كان موجود قبلها.
-  const previousQuantity = Math.max(0, (stock?.quantity ?? 0) - receipt.quantity);
-  const totalQuantity = previousQuantity + receipt.quantity;
+  const before = Math.max(0, previousQuantity);
+  const totalQuantity = before + receipt.quantity;
 
   if (totalQuantity <= 0) return;
 
   const weighted = round2(
-    (previousQuantity * product.cost + receipt.quantity * receipt.unitCost) /
-      totalQuantity,
+    (before * product.cost + receipt.quantity * receipt.unitCost) / totalQuantity,
   );
 
   if (weighted === product.cost) return;

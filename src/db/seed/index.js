@@ -44,9 +44,9 @@ const PRODUCTS = [
 ];
 
 const CUSTOMERS = [
-  { name: 'محمد أحمد سيد', phone: '01001234567', email: 'mohamed@example.com', creditLimit: 2000 },
-  { name: 'فاطمة علي حسن', phone: '01112345678', creditLimit: 1000 },
-  { name: 'كريم مصطفى', phone: '01223456789', creditLimit: 5000 },
+  { name: 'محمد أحمد سيد', phone: '01001234567', email: 'mohamed@example.com' },
+  { name: 'فاطمة علي حسن', phone: '01112345678' },
+  { name: 'كريم مصطفى', phone: '01223456789' },
   { name: 'نورا إبراهيم', phone: '01034567890' },
 ];
 

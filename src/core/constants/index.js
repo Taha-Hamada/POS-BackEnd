@@ -1,10 +1,9 @@
 export * from './roles.js';
 export * from './permissions.js';
 
+/** كاش وآجل بس — مفيش فيزا ولا محفظة في النظام. */
 export const PAYMENT_METHODS = Object.freeze({
   CASH: 'cash',
-  CARD: 'card',
-  WALLET: 'wallet',
   CREDIT: 'credit',
 });
 
@@ -20,7 +19,6 @@ export const DISCOUNT_TYPES = Object.freeze({
 export const DISCOUNT_TYPE_VALUES = Object.freeze(Object.values(DISCOUNT_TYPES));
 
 export const INVOICE_STATUSES = Object.freeze({
-  HELD: 'held',
   COMPLETED: 'completed',
   PARTIALLY_RETURNED: 'partially_returned',
   RETURNED: 'returned',

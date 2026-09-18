@@ -47,7 +47,6 @@ const attachStock = async (items, branchId) => {
       return {
         ...item,
         stock: record?.quantity ?? 0,
-        reserved: record?.reserved ?? 0,
         // حد الطلب الظاهر هو تجاوز الفرع لو موجود، وإلا حد المنتج.
         effectiveMinStock: record?.minStock ?? item.minStock ?? 0,
       };
@@ -59,7 +58,6 @@ const attachStock = async (items, branchId) => {
   return items.map((item) => ({
     ...item,
     stock: totals.get(String(item._id))?.quantity ?? 0,
-    reserved: totals.get(String(item._id))?.reserved ?? 0,
   }));
 };
 
@@ -219,26 +217,6 @@ export const removeProductImage = async (id) => {
   return product.populate(POPULATE_CATEGORY);
 };
 
-/** تعديل سعر جماعي بنسبة أو بمبلغ — بيستخدم في مواسم الغلاء والعروض. */
-export const bulkUpdatePrices = async ({ productIds, category, mode, value }) => {
-  const filter = productIds?.length
-    ? { _id: { $in: productIds } }
-    : { category, isActive: true };
-
-  if (!productIds?.length && !category) {
-    throw ApiError.badRequest('حدد منتجات أو قسم للتعديل');
-  }
-
-  const update =
-    mode === 'percentage'
-      ? [{ $set: { price: { $round: [{ $multiply: ['$price', 1 + value / 100] }, 2] } } }]
-      : [{ $set: { price: { $round: [{ $max: [0, { $add: ['$price', value] }] }, 2] } } }];
-
-  const result = await productRepository.model.updateMany(filter, update);
-
-  return { matched: result.matchedCount, modified: result.modifiedCount };
-};
-
 /** المنتج مش بيتمسح لأن الفواتير القديمة بتشاور عليه، بيتعطّل بس. */
 export const setProductActiveState = async (id, isActive) => {
   const product = await productRepository.findById(id);
@@ -266,7 +244,6 @@ export default {
   updateProduct,
   setProductImage,
   removeProductImage,
-  bulkUpdatePrices,
   setProductActiveState,
   getExpiringProducts,
 };

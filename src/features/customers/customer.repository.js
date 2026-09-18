@@ -45,14 +45,16 @@ class CustomerRepository extends BaseRepository {
   }
 
   /** بيعكس إجماليات فاتورة اتلغت من غير ما ينزل بالعدّاد تحت الصفر. */
-  reversePurchase(customerId, amount, { session } = {}) {
+  reversePurchase(customerId, amount, { session, dropOrder = true } = {}) {
     return this.model.findOneAndUpdate(
       { _id: customerId },
       [
         {
           $set: {
             totalPurchases: { $max: [0, { $subtract: ['$totalPurchases', amount] }] },
-            ordersCount: { $max: [0, { $subtract: ['$ordersCount', 1] }] },
+            ...(dropOrder
+              ? { ordersCount: { $max: [0, { $subtract: ['$ordersCount', 1] }] } }
+              : {}),
           },
         },
       ],
