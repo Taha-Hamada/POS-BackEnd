@@ -25,6 +25,8 @@ const productBody = z.object({
   description: z.string().trim().max(500).optional(),
   price: z.number().min(0, 'السعر مينفعش يكون سالب'),
   cost: z.number().min(0, 'التكلفة مينفعش تكون سالبة'),
+  cartonPrice: z.number().min(0).nullish(),
+  piecesPerCarton: z.number().int().min(1).optional(),
   minStock: z.number().int().min(0).optional(),
   trackStock: z.boolean().optional(),
   isTaxable: z.boolean().optional(),

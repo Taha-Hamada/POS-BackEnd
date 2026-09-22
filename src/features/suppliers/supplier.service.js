@@ -207,6 +207,8 @@ export const getSuppliedProducts = async (supplierId) => {
         unit: '$product.unit',
         price: '$product.price',
         cost: '$product.cost',
+        cartonPrice: '$product.cartonPrice',
+        piecesPerCarton: '$product.piecesPerCarton',
         colorIndex: '$product.colorIndex',
         minStock: '$product.minStock',
         trackStock: '$product.trackStock',

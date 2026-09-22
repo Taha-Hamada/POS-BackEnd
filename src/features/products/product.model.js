@@ -29,6 +29,8 @@ const productSchema = new mongoose.Schema(
 
     price: { type: Number, required: true, min: 0 },
     cost: { type: Number, required: true, min: 0 },
+    cartonPrice: { type: Number, default: null, min: 0 },
+    piecesPerCarton: { type: Number, default: 1, min: 1 },
 
     /**
      * الرصيد نفسه متخزن في مجموعة Stock لكل فرع.

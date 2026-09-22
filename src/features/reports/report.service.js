@@ -16,6 +16,14 @@ import supplierRepository from '../suppliers/supplier.repository.js';
 /** الفواتير اللي بتتحسب في التقارير: كل حاجة ما عدا الملغاة. */
 const COUNTED_STATUSES = { $ne: INVOICE_STATUSES.VOIDED };
 
+/** ربح المرتجعات — الإيراد ناقص الضريبة المردودة والتكلفة الراجعة للمخزن. */
+const returnsProfit = (returns) =>
+  round2(
+    (returns?.total ?? 0) -
+      (returns?.taxAmount ?? 0) -
+      (returns?.costTotal ?? 0),
+  );
+
 const periodMatch = ({ branch, from, to }) => {
   const match = { status: COUNTED_STATUSES };
 
@@ -115,19 +123,43 @@ export const getSalesSeries = async ({ branch, days = 30 }) => {
   return series;
 };
 
-/** أفضل المنتجات مبيعًا — بيتحسب من سطور الفواتير مباشرة. */
+/**
+ * الكمية والقيمة الصافية لسطر فاتورة بعد المرتجعات.
+ *
+ * صنف اتباع 100 ورجع 100 مكانش ينفع يفضل «الأكثر مبيعًا» بكامل قيمته،
+ * فبنشيل نصيب الكمية المرتجعة من السطر بنفس نسبة السيرفر في المرتجع.
+ */
+const NET_LINE = {
+  netQuantity: {
+    $subtract: ['$lines.quantity', { $ifNull: ['$lines.returnedQuantity', 0] }],
+  },
+  soldQuantity: '$lines.quantity',
+};
+
+const NET_RATIO = {
+  $cond: [
+    { $gt: ['$soldQuantity', 0] },
+    { $divide: ['$netQuantity', '$soldQuantity'] },
+    0,
+  ],
+};
+
+/** أفضل المنتجات مبيعًا — بيتحسب من سطور الفواتير بعد خصم المرتجعات. */
 export const getTopProducts = async ({ branch, from, to, limit = 10 }) => {
   const rows = await Invoice.aggregate([
     { $match: periodMatch({ branch, from, to }) },
     { $unwind: '$lines' },
+    { $addFields: NET_LINE },
+    { $addFields: { netRatio: NET_RATIO } },
+    { $match: { netQuantity: { $gt: 0 } } },
     {
       $group: {
         _id: '$lines.product',
         name: { $first: '$lines.name' },
         sku: { $first: '$lines.sku' },
-        units: { $sum: '$lines.quantity' },
-        revenue: { $sum: '$lines.lineTotal' },
-        cost: { $sum: { $multiply: ['$lines.unitCost', '$lines.quantity'] } },
+        units: { $sum: '$netQuantity' },
+        revenue: { $sum: { $multiply: ['$lines.lineTotal', '$netRatio'] } },
+        cost: { $sum: { $multiply: ['$lines.unitCost', '$netQuantity'] } },
       },
     },
     { $sort: { revenue: -1 } },
@@ -149,6 +181,9 @@ export const getSalesByCategory = async ({ branch, from, to }) => {
   const rows = await Invoice.aggregate([
     { $match: periodMatch({ branch, from, to }) },
     { $unwind: '$lines' },
+    { $addFields: NET_LINE },
+    { $addFields: { netRatio: NET_RATIO } },
+    { $match: { netQuantity: { $gt: 0 } } },
     {
       $lookup: {
         from: 'products',
@@ -173,9 +208,9 @@ export const getSalesByCategory = async ({ branch, from, to }) => {
         name: { $first: '$category.name' },
         icon: { $first: '$category.icon' },
         color: { $first: '$category.color' },
-        units: { $sum: '$lines.quantity' },
-        revenue: { $sum: '$lines.lineTotal' },
-        cost: { $sum: { $multiply: ['$lines.unitCost', '$lines.quantity'] } },
+        units: { $sum: '$netQuantity' },
+        revenue: { $sum: { $multiply: ['$lines.lineTotal', '$netRatio'] } },
+        cost: { $sum: { $multiply: ['$lines.unitCost', '$netQuantity'] } },
       },
     },
     { $sort: { revenue: -1 } },
@@ -307,18 +342,19 @@ export const getTaxReport = async ({ branch, months = 12 }) => {
     { $sort: { _id: 1 } },
   ]);
 
-  const purchases = await getPurchaseTax({
-    branch,
-    from,
-    taxRate: settings.taxRate,
-  });
+  const [purchases, returns] = await Promise.all([
+    getPurchaseTax({ branch, from, taxRate: settings.taxRate }),
+    returnService.getReturnsSummary({ branch, from }),
+  ]);
 
-  const collected = round2(
-    rows.reduce((sum, row) => sum + row.tax, 0),
-  );
+  // الضريبة اللي اترجعت للعميل مع المرتجع مش محصّلة، فمينفعش تتحسب علينا.
+  const charged = round2(rows.reduce((sum, row) => sum + row.tax, 0));
+  const collected = round2(charged - returns.taxAmount);
 
   return {
     taxRate: settings.taxRate,
+    charged,
+    refunded: returns.taxAmount,
     collected,
     paid: purchases.tax,
     net: round2(collected - purchases.tax),
@@ -507,9 +543,21 @@ export const getDashboard = async ({ branch, days = 7 }) => {
       profit: periodStats.profit,
       discounts: periodStats.discountTotal,
       returns: returns.total,
+      // اللي المرتجعات شالته من الربح فعلًا — أقل من إجماليها لأن الضريبة
+      // رجعت والبضاعة رجعت للمخزن.
+      returnsProfit: returnsProfit(returns),
       expenses: expenses.total,
-      // صافي الربح بعد المرتجعات والمصروفات المعتمدة.
-      netProfit: round2(periodStats.profit - returns.total - expenses.total),
+      /**
+       * صافي الربح بعد المرتجعات والمصروفات المعتمدة.
+       *
+       * المرتجع بيلغي ربحه هو بس: إيراده اترد للعميل، بس ضريبته اترجعت
+       * كمان والبضاعة رجعت للمخزن بتكلفتها. طرح إجمالي المرتجع كان بيحمّل
+       * الربح التكلفة والضريبة مرتين — فاتورة بـ114 (ضريبة 14، تكلفة 60)
+       * اترجّعت بالكامل كانت بتطلّع صافي −60 بدل صفر.
+       */
+      netProfit: round2(
+        periodStats.profit - returnsProfit(returns) - expenses.total,
+      ),
       averageTicket:
         periodStats.invoicesCount > 0
           ? round2(periodStats.total / periodStats.invoicesCount)

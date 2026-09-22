@@ -19,6 +19,7 @@ const discount = z.object({
 const saleLine = z.object({
   product: objectId,
   variantId: objectId.optional(),
+  pricingMode: z.enum(['piece', 'carton']).optional().default('piece'),
   quantity: z.number().positive('الكمية لازم تكون أكبر من صفر'),
   discountType: z.enum(DISCOUNT_TYPE_VALUES).nullish(),
   discountValue: z.number().min(0).optional(),

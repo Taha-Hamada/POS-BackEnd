@@ -52,13 +52,24 @@ const resolveLines = async (requestedLines) => {
       throw ApiError.badRequest(`المتغير المطلوب من ${product.name} مش موجود`);
     }
 
+    const piecesPerCarton = Math.max(1, product.piecesPerCarton ?? 1);
+    const pricingMode = line.pricingMode ?? 'piece';
+    const quantityInPieces =
+      pricingMode === 'carton' ? line.quantity * piecesPerCarton : line.quantity;
+    const unitPrice =
+      pricingMode === 'carton'
+        ? product.cartonPrice && product.cartonPrice > 0
+          ? product.cartonPrice / piecesPerCarton
+          : product.price
+        : variant?.priceOverride ?? product.price;
+
     return {
       product: product._id,
       name: product.name,
       sku: variant?.sku || product.sku,
       unit: product.unit,
-      quantity: line.quantity,
-      unitPrice: variant?.priceOverride ?? product.price,
+      quantity: quantityInPieces,
+      unitPrice,
       unitCost: product.cost,
       discountType: line.discountType ?? null,
       discountValue: line.discountValue ?? 0,

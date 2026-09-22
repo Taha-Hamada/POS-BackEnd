@@ -360,6 +360,9 @@ export const getReturnsSummary = ({ branch, from, to }) => {
           _id: null,
           returnsCount: { $sum: 1 },
           total: { $sum: '$total' },
+          // التقارير محتاجة تفصل الضريبة والتكلفة عن الإيراد، عشان تعرف
+          // ربح المرتجع الحقيقي مش إجماليه.
+          taxAmount: { $sum: '$taxAmount' },
           costTotal: { $sum: '$costTotal' },
         },
       },
@@ -367,6 +370,7 @@ export const getReturnsSummary = ({ branch, from, to }) => {
     .then(([row]) => ({
       returnsCount: row?.returnsCount ?? 0,
       total: round2(row?.total ?? 0),
+      taxAmount: round2(row?.taxAmount ?? 0),
       costTotal: round2(row?.costTotal ?? 0),
     }));
 };
